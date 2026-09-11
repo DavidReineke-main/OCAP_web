@@ -2,14 +2,25 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, cleanup, fireEvent, waitFor } from "@solidjs/testing-library";
 import { Router, Route } from "@solidjs/router";
 import { I18nProvider } from "../../../hooks/useLocale";
+import { AuthProvider } from "../../../hooks/useAuth";
 import { AdminPage } from "../AdminPage";
-import type { AdminAuthConfig } from "../../../data/apiClient";
+import type { AdminAuthConfig, AuthConfig, AuthState } from "../../../data/apiClient";
+import { setAuthToken } from "../../../data/apiClient";
 
-const { mockGetAdminAuthConfig, mockGetAllowlist, mockAddToAllowlist, mockRemoveFromAllowlist } = vi.hoisted(() => ({
+const {
+  mockGetAdminAuthConfig,
+  mockGetAllowlist,
+  mockAddToAllowlist,
+  mockRemoveFromAllowlist,
+  mockGetAuthConfig,
+  mockGetMe,
+} = vi.hoisted(() => ({
   mockGetAdminAuthConfig: vi.fn(),
   mockGetAllowlist: vi.fn(),
   mockAddToAllowlist: vi.fn(),
   mockRemoveFromAllowlist: vi.fn(),
+  mockGetAuthConfig: vi.fn(),
+  mockGetMe: vi.fn(),
 }));
 
 vi.mock("../../../data/apiClient", async () => {
@@ -21,6 +32,10 @@ vi.mock("../../../data/apiClient", async () => {
       getAllowlist = mockGetAllowlist;
       addToAllowlist = mockAddToAllowlist;
       removeFromAllowlist = mockRemoveFromAllowlist;
+      getAuthConfig = mockGetAuthConfig;
+      getMe = mockGetMe;
+      consumeAuthToken = (): boolean => false;
+      popReturnTo = (): string | null => null;
     },
   };
 });
@@ -28,9 +43,11 @@ vi.mock("../../../data/apiClient", async () => {
 function renderPage(): ReturnType<typeof render> {
   return render(() => (
     <I18nProvider locale="en">
-      <Router>
-        <Route path="*" component={AdminPage} />
-      </Router>
+      <AuthProvider>
+        <Router>
+          <Route path="*" component={AdminPage} />
+        </Router>
+      </AuthProvider>
     </I18nProvider>
   ));
 }
@@ -45,14 +62,28 @@ function configFixture(overrides: Partial<AdminAuthConfig> = {}): AdminAuthConfi
   };
 }
 
+/** Default auth state used by most tests: authenticated admin so the AdminPage guard lets content render. */
+const ADMIN_AUTH_STATE: AuthState = {
+  authenticated: true,
+  role: "admin",
+  steamId: "76561198000000001",
+};
+
 describe("AdminPage", () => {
   beforeEach(() => {
     mockGetAdminAuthConfig.mockReset();
     mockGetAllowlist.mockReset();
     mockAddToAllowlist.mockReset();
     mockRemoveFromAllowlist.mockReset();
+    mockGetAuthConfig.mockReset().mockResolvedValue({ mode: "steamAllowlist" } satisfies AuthConfig);
+    mockGetMe.mockReset().mockResolvedValue(ADMIN_AUTH_STATE);
+    // AuthProvider only fetches /me when a token is present.
+    setAuthToken("test-admin-token");
   });
-  afterEach(() => cleanup());
+  afterEach(() => {
+    setAuthToken(null);
+    cleanup();
+  });
 
   it("renders allowlist rows fetched from the server", async () => {
     mockGetAdminAuthConfig.mockResolvedValue(configFixture());

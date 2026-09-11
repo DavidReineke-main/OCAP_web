@@ -204,6 +204,10 @@ func validateAuthConfig(auth Auth) error {
 		if auth.Password == "" {
 			return fmt.Errorf("auth.mode %q requires auth.password to be set", auth.Mode)
 		}
+	case "steam", "steamAllowlist":
+		if len(auth.AdminSteamIDs) == 0 {
+			return fmt.Errorf("auth.mode %q requires at least one entry in auth.adminSteamIds (otherwise no one can access the admin panel to grant further access)", auth.Mode)
+		}
 	}
 	return nil
 }

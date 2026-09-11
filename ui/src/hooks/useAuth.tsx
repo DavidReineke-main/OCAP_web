@@ -11,6 +11,8 @@ export interface Auth {
   steamAvatar: Accessor<string | null>;
   authError: Accessor<string | null>;
   authMode: Accessor<string>;
+  /** True once the initial session check (on app mount) has completed. */
+  authReady: Accessor<boolean>;
   dismissAuthError: () => void;
   loginWithSteam: () => void;
   loginWithPassword: (password: string) => Promise<void>;
@@ -36,6 +38,7 @@ export function AuthProvider(props: { children: JSX.Element }): JSX.Element {
   const [steamAvatar, setSteamAvatar] = createSignal<string | null>(null);
   const [authError, setAuthError] = createSignal<string | null>(null);
   const [authMode, setAuthMode] = createSignal<string>("public");
+  const [authReady, setAuthReady] = createSignal(false);
   const api = new ApiClient();
 
   onMount(async () => {
@@ -74,6 +77,7 @@ export function AuthProvider(props: { children: JSX.Element }): JSX.Element {
 
     if (!getAuthToken()) {
       setAuthenticated(false);
+      setAuthReady(true);
       return;
     }
     try {
@@ -86,6 +90,7 @@ export function AuthProvider(props: { children: JSX.Element }): JSX.Element {
     } catch {
       setAuthenticated(false);
     }
+    setAuthReady(true);
   });
 
   const dismissAuthError = () => setAuthError(null);
@@ -125,7 +130,7 @@ export function AuthProvider(props: { children: JSX.Element }): JSX.Element {
   };
 
   return (
-    <AuthContext.Provider value={{ authenticated, role, isAdmin, steamId, steamName, steamAvatar, authError, authMode, dismissAuthError, loginWithSteam, loginWithPassword, logout }}>
+    <AuthContext.Provider value={{ authenticated, role, isAdmin, steamId, steamName, steamAvatar, authError, authMode, authReady, dismissAuthError, loginWithSteam, loginWithPassword, logout }}>
       {props.children}
     </AuthContext.Provider>
   );

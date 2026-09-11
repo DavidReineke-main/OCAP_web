@@ -1,7 +1,8 @@
 import type { JSX } from "solid-js";
-import { createSignal, createMemo, createResource, Show, For, onCleanup } from "solid-js";
+import { createSignal, createMemo, createResource, createEffect, Show, For, onCleanup } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { ApiClient, ApiError, type AdminAuthConfig } from "../../data/apiClient";
+import { useAuth } from "../../hooks/useAuth";
 import { useI18n } from "../../hooks/useLocale";
 import {
   ArrowLeftIcon,
@@ -45,6 +46,18 @@ interface AllowlistEntry {
 export function AdminPage(): JSX.Element {
   const navigate = useNavigate();
   const { t } = useI18n();
+  const { authReady, authenticated, isAdmin } = useAuth();
+
+  // Client-side guard: the real enforcement happens server-side (every admin
+  // API call requires an admin JWT regardless of auth.mode), but redirecting
+  // non-admins away avoids exposing a broken/empty admin screen. Wait for
+  // authReady so we don't bounce a legitimate admin during the initial
+  // session check on page load/refresh.
+  createEffect(() => {
+    if (authReady() && (!authenticated() || !isAdmin())) {
+      navigate("/", { replace: true });
+    }
+  });
 
   const [allowlist, setAllowlist] = createSignal<AllowlistEntry[]>([]);
   const [search, setSearch] = createSignal("");
@@ -267,6 +280,7 @@ export function AdminPage(): JSX.Element {
   }
 
   return (
+    <Show when={authReady() && authenticated() && isAdmin()} fallback={null}>
     <div class={styles.page}>
       {/* Header */}
       <header class={styles.header}>
@@ -495,6 +509,7 @@ export function AdminPage(): JSX.Element {
         />
       </Show>
     </div>
+    </Show>
   );
 }
 
