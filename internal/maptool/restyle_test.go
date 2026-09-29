@@ -95,3 +95,57 @@ func TestRestyleWorld_ProbesTileFiles(t *testing.T) {
 		assert.Greater(t, info.Size(), int64(0))
 	}
 }
+
+func TestRestyleWorld_SyncsHeightmapFlag(t *testing.T) {
+	mapsDir := t.TempDir()
+	worldDir := filepath.Join(mapsDir, "testworld")
+	tilesDir := filepath.Join(worldDir, "tiles")
+	require.NoError(t, os.MkdirAll(tilesDir, 0755))
+
+	meta := worldMetaJSON{WorldName: "testworld", WorldSize: 256, FeatureLayers: []string{"house"}}
+	data, _ := json.Marshal(meta)
+	require.NoError(t, os.WriteFile(filepath.Join(worldDir, "meta.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(worldDir, "map.json"),
+		[]byte(`{"name":"testworld","worldSize":256,"maplibre":true}`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tilesDir, "heightmap.pmtiles"), []byte("dummy"), 0644))
+
+	require.NoError(t, RestyleWorld(mapsDir, "testworld"))
+
+	mapData, err := os.ReadFile(filepath.Join(worldDir, "map.json"))
+	require.NoError(t, err)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(mapData, &raw))
+	assert.Equal(t, true, raw["hasHeightmap"])
+	assert.Equal(t, true, raw["maplibre"], "existing fields preserved")
+	assert.Equal(t, float64(256), raw["worldSize"])
+
+	styleData, err := os.ReadFile(filepath.Join(worldDir, "styles", "topo.json"))
+	require.NoError(t, err)
+	var style map[string]any
+	require.NoError(t, json.Unmarshal(styleData, &style))
+	assert.Contains(t, style, "terrain")
+
+	// Removing the heightmap clears the flag again
+	require.NoError(t, os.Remove(filepath.Join(tilesDir, "heightmap.pmtiles")))
+	require.NoError(t, RestyleWorld(mapsDir, "testworld"))
+	mapData, err = os.ReadFile(filepath.Join(worldDir, "map.json"))
+	require.NoError(t, err)
+	raw = nil
+	require.NoError(t, json.Unmarshal(mapData, &raw))
+	assert.NotContains(t, raw, "hasHeightmap")
+}
+
+func TestRestyleWorld_InvalidMapJSON(t *testing.T) {
+	mapsDir := t.TempDir()
+	worldDir := filepath.Join(mapsDir, "testworld")
+	require.NoError(t, os.MkdirAll(worldDir, 0755))
+
+	meta := worldMetaJSON{WorldName: "testworld", FeatureLayers: []string{"house"}}
+	data, _ := json.Marshal(meta)
+	require.NoError(t, os.WriteFile(filepath.Join(worldDir, "meta.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(worldDir, "map.json"), []byte("{invalid"), 0644))
+
+	err := RestyleWorld(mapsDir, "testworld")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse map.json")
+}

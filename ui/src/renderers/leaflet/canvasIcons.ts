@@ -4,7 +4,7 @@ import { basePath } from "../../data/basePath";
 
 // --------------- Icon metadata (mirrors leafletIcons.ts) ---------------
 
-const ICON_SIZES: Record<string, [number, number]> = {
+export const ICON_SIZES: Record<string, [number, number]> = {
   man: [16, 16],
   ship: [28, 28],
   parachute: [20, 20],
@@ -19,9 +19,9 @@ const ICON_SIZES: Record<string, [number, number]> = {
   unknown: [28, 28],
 };
 
-const ICON_TYPES = Object.keys(ICON_SIZES);
+export const ICON_TYPES = Object.keys(ICON_SIZES);
 
-const ICON_PATHS: Record<string, string> = {
+export const ICON_PATHS: Record<string, string> = {
   man: `${basePath}images/markers/man/`,
   ship: `${basePath}images/markers/ship/`,
   parachute: `${basePath}images/markers/parachute/`,
@@ -36,7 +36,7 @@ const ICON_PATHS: Record<string, string> = {
   unknown: `${basePath}images/markers/unknown/`,
 };
 
-const ICON_VARIANTS = [
+export const ICON_VARIANTS = [
   "blufor", "opfor", "ind", "civ", "logic",
   "unknown", "dead", "hit", "unconscious",
 ] as const;

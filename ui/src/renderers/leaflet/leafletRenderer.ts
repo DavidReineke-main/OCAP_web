@@ -357,6 +357,9 @@ export class LeafletRenderer implements MapRenderer {
           if (typeof style.glyphs === "string") {
             style.glyphs = makeAbsolute(style.glyphs);
           }
+          // The 2D Leaflet overlay must stay flat: terrain would displace
+          // the GL basemap relative to Leaflet markers. 3D uses its own renderer.
+          delete style.terrain;
           return style;
         };
 
@@ -1533,5 +1536,37 @@ export class LeafletRenderer implements MapRenderer {
     return {
       container: this.map?.getContainer(),
     };
+  }
+
+  // ==================== 3D camera & mode (unsupported in 2D) ====================
+  // The 2D Leaflet renderer has no perspective camera. These are no-ops so it
+  // keeps satisfying MapRenderer; MapLibre3DRenderer provides the real behavior.
+
+  is3DMode(): boolean {
+    return false;
+  }
+
+  set3DMode(_enabled: boolean): void {
+    // no-op — 2D renderer has no 3D mode
+  }
+
+  getPitch(): number {
+    return 0;
+  }
+
+  setPitch(_pitch: number): void {
+    // no-op
+  }
+
+  getBearing(): number {
+    return 0;
+  }
+
+  setBearing(_bearing: number): void {
+    // no-op
+  }
+
+  setTerrainExaggeration(_exaggeration: number): void {
+    // no-op
   }
 }

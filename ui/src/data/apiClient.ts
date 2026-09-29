@@ -273,6 +273,11 @@ export class ApiClient {
    * 2. PMTiles CDN: https://pmtiles.ocap2.com/{worldName}/map.json
    * 3. Legacy raster CDN: https://maps.ocap2.com/{worldName}/map.json
    * 4. Blank placeholder if nothing found
+   *
+   * A local heightmap is layered on afterward regardless of which tier won
+   * the basemap imagery (see enrichWithLocalHeightmap) — an admin can
+   * generate elevation data locally via the Map Manager even for a world
+   * whose basemap imagery still comes from a CDN tier.
    */
   async getWorldConfig(worldName: string): Promise<WorldConfig> {
     const defaults: WorldConfig = {
@@ -290,12 +295,15 @@ export class ApiClient {
     try {
       const localUrl = `${this.baseUrl}/images/maps/${encodeURIComponent(normalizedName)}/map.json`;
       const local = await this.fetchJson<Partial<WorldConfig>>(localUrl);
-      return {
-        ...defaults,
-        ...local,
-        tileBaseUrl: `${this.baseUrl}/images/maps/${encodeURIComponent(normalizedName)}`,
-        worldName,
-      };
+      return await this.enrichWithLocalHeightmap(
+        {
+          ...defaults,
+          ...local,
+          tileBaseUrl: `${this.baseUrl}/images/maps/${encodeURIComponent(normalizedName)}`,
+          worldName,
+        },
+        normalizedName,
+      );
     } catch {
       // Local not available, try CDN
     }
@@ -306,13 +314,16 @@ export class ApiClient {
       const res = await fetch(pmtilesUrl, { cache: "no-store" });
       if (res.ok) {
         const data = (await res.json()) as Partial<WorldConfig>;
-        return {
-          ...defaults,
-          ...data,
-          maplibre: true,
-          tileBaseUrl: `https://pmtiles.ocap2.com/${encodeURIComponent(normalizedName)}`,
-          worldName,
-        };
+        return await this.enrichWithLocalHeightmap(
+          {
+            ...defaults,
+            ...data,
+            maplibre: true,
+            tileBaseUrl: `https://pmtiles.ocap2.com/${encodeURIComponent(normalizedName)}`,
+            worldName,
+          },
+          normalizedName,
+        );
       }
     } catch {
       // PMTiles CDN not available
@@ -324,12 +335,15 @@ export class ApiClient {
       const res = await fetch(rasterUrl, { cache: "no-store" });
       if (res.ok) {
         const data = (await res.json()) as Partial<WorldConfig>;
-        return {
-          ...defaults,
-          ...data,
-          tileBaseUrl: `https://maps.ocap2.com/${encodeURIComponent(normalizedName)}`,
-          worldName,
-        };
+        return await this.enrichWithLocalHeightmap(
+          {
+            ...defaults,
+            ...data,
+            tileBaseUrl: `https://maps.ocap2.com/${encodeURIComponent(normalizedName)}`,
+            worldName,
+          },
+          normalizedName,
+        );
       }
     } catch {
       // Raster CDN not available
@@ -337,7 +351,33 @@ export class ApiClient {
 
     // 4. Fallback — blank placeholder
     console.warn(`Map for world "${worldName}" not found locally or on CDN, using placeholder`);
-    return { ...defaults, worldSize: 30720, imageSize: 30720 };
+    return await this.enrichWithLocalHeightmap(
+      { ...defaults, worldSize: 30720, imageSize: 30720 },
+      normalizedName,
+    );
+  }
+
+  /**
+   * Layers locally-generated elevation data onto a WorldConfig resolved from
+   * any tier. Heightmaps are always locally hosted (generated via the Map
+   * Manager), independent of wherever the basemap imagery itself came from,
+   * so this is a separate probe from the main tileBaseUrl resolution above
+   * — otherwise a CDN-hosted world could never gain local elevation data,
+   * and a local map.json with only elevation data (no real tile imagery)
+   * would incorrectly short-circuit past the CDN imagery fallback tiers.
+   */
+  private async enrichWithLocalHeightmap(config: WorldConfig, normalizedName: string): Promise<WorldConfig> {
+    if (config.hasHeightmap) return config;
+    try {
+      const heightmapUrl = `${this.baseUrl}/images/maps/${encodeURIComponent(normalizedName)}/tiles/heightmap.pmtiles`;
+      const res = await fetch(heightmapUrl, { method: "HEAD", cache: "no-store" });
+      if (res.ok) {
+        return { ...config, hasHeightmap: true, heightmapUrl };
+      }
+    } catch {
+      // No local heightmap — fine, most worlds won't have one
+    }
+    return config;
   }
 
   /**

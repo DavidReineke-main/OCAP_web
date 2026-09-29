@@ -253,7 +253,8 @@ func TestGenerateStyleDocument_Sources(t *testing.T) {
 		HasColorRelief: true,
 	}
 
-	// Color-relief references: features, color-relief, hillshade, satellite — but NOT heightmap or bathymetry
+	// Color-relief references: features, color-relief, hillshade, satellite — but NOT bathymetry.
+	// heightmap is kept because the root terrain property references it.
 	doc := GenerateStyleDocument(cfg, StyleColorRelief)
 	sources := doc["sources"].(map[string]interface{})
 
@@ -261,8 +262,45 @@ func TestGenerateStyleDocument_Sources(t *testing.T) {
 	assert.Contains(t, sources, "satellite")
 	assert.Contains(t, sources, "hillshade")
 	assert.Contains(t, sources, "color-relief")
-	assert.NotContains(t, sources, "heightmap", "heightmap not referenced by color-relief layers")
+	assert.Contains(t, sources, "heightmap", "heightmap referenced by terrain")
 	assert.NotContains(t, sources, "bathymetry", "bathymetry not referenced by color-relief layers")
+}
+
+func TestGenerateStyleDocument_Terrain(t *testing.T) {
+	cfg := StyleConfig{
+		WorldName:    "altis",
+		URLPrefix:    "images/maps/altis/tiles",
+		VectorLayers: []string{"sea"},
+		HasHeightmap: true,
+	}
+
+	for _, variant := range []StyleVariant{StyleColorRelief, StyleTopo, StyleTopoDark, StyleTopoRelief} {
+		t.Run(string(variant), func(t *testing.T) {
+			doc := GenerateStyleDocument(cfg, variant)
+			terrain, ok := doc["terrain"].(map[string]interface{})
+			assert.True(t, ok, "terrain property expected")
+			assert.Equal(t, "heightmap", terrain["source"])
+			assert.Equal(t, 1.0, terrain["exaggeration"])
+
+			sources := doc["sources"].(map[string]interface{})
+			heightmap, ok := sources["heightmap"].(map[string]interface{})
+			assert.True(t, ok, "heightmap source expected")
+			assert.Equal(t, "raster-dem", heightmap["type"])
+			assert.Equal(t, "pmtiles://images/maps/altis/tiles/heightmap.pmtiles", heightmap["url"])
+		})
+	}
+}
+
+func TestGenerateStyleDocument_NoTerrainWithoutHeightmap(t *testing.T) {
+	cfg := StyleConfig{
+		WorldName:    "altis",
+		URLPrefix:    "images/maps/altis/tiles",
+		VectorLayers: []string{"sea"},
+		HasSatellite: true,
+	}
+
+	doc := GenerateStyleDocument(cfg, StyleTopo)
+	assert.NotContains(t, doc, "terrain")
 }
 
 func TestGenerateStyleDocument_NoOptionalSources(t *testing.T) {
@@ -305,10 +343,10 @@ func TestGenerateStyleDocument_SourcesPerVariant(t *testing.T) {
 		expected []string
 		banned   []string
 	}{
-		{StyleTopo, []string{"features"}, []string{"color-relief", "bathymetry", "heightmap", "satellite"}},
-		{StyleTopoDark, []string{"features"}, []string{"color-relief", "bathymetry", "heightmap", "satellite"}},
-		{StyleTopoRelief, []string{"features", "bathymetry"}, []string{"satellite", "color-relief"}},
-		{StyleColorRelief, []string{"features", "color-relief", "hillshade", "satellite"}, []string{"heightmap", "bathymetry"}},
+		{StyleTopo, []string{"features", "heightmap"}, []string{"color-relief", "bathymetry", "satellite"}},
+		{StyleTopoDark, []string{"features", "heightmap"}, []string{"color-relief", "bathymetry", "satellite"}},
+		{StyleTopoRelief, []string{"features", "bathymetry", "heightmap"}, []string{"satellite", "color-relief"}},
+		{StyleColorRelief, []string{"features", "color-relief", "hillshade", "satellite", "heightmap"}, []string{"bathymetry"}},
 	}
 
 	for _, tt := range tests {

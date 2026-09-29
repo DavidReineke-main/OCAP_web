@@ -63,6 +63,10 @@ export default defineConfig({
         "src/renderers/leaflet/leafletRenderer.ts",
         "src/renderers/leaflet/canvasLeafletRenderer.ts",
         "src/renderers/leaflet/leafletGrid.ts",
+        // MapLibre 3D renderer (init() creates a real maplibregl.Map, which needs a
+        // WebGL canvas context jsdom doesn't provide — same reasoning as above).
+        // Pure logic (coordinate conversion, camera math, icon keys) is unit tested.
+        "src/renderers/maplibre/maplibre3dRenderer.ts",
       ],
     },
   },

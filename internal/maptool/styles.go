@@ -1153,17 +1153,21 @@ const (
 	StyleTopoRelief  StyleVariant = "topo-relief"
 )
 
+// DefaultTerrainExaggeration is the terrain exaggeration written to the style's
+// root terrain property when a heightmap is available (used by the 3D view).
+const DefaultTerrainExaggeration = 1.0
+
 // StyleConfig holds the parameters for generating a style document.
 type StyleConfig struct {
-	WorldName        string
-	URLPrefix        string // e.g. "images/maps/stratis/tiles" — base for tile sources
-	VectorLayers     []string
-	HasSatellite     bool
-	HasHeightmap     bool
-	HasHillshade     bool
-	HasBathymetry    bool
-	HasColorRelief   bool
-	GlyphsURL        string // template for font glyphs, e.g. "../../fonts/{fontstack}/{range}.pbf"
+	WorldName      string
+	URLPrefix      string // e.g. "images/maps/stratis/tiles" — base for tile sources
+	VectorLayers   []string
+	HasSatellite   bool
+	HasHeightmap   bool
+	HasHillshade   bool
+	HasBathymetry  bool
+	HasColorRelief bool
+	GlyphsURL      string // template for font glyphs, e.g. "../../fonts/{fontstack}/{range}.pbf"
 }
 
 // GenerateStyleDocument creates a full MapLibre style JSON document for the given variant.
@@ -1195,8 +1199,12 @@ func GenerateStyleDocument(cfg StyleConfig, variant StyleVariant) map[string]int
 	}
 
 	// Only include sources that are actually referenced by layers
+	// (the heightmap source is also referenced by the root terrain property)
 	sources := buildSources(cfg)
 	referenced := referencedSources(layers)
+	if cfg.HasHeightmap {
+		referenced["heightmap"] = true
+	}
 	for name := range sources {
 		if !referenced[name] {
 			delete(sources, name)
@@ -1215,6 +1223,12 @@ func GenerateStyleDocument(cfg StyleConfig, variant StyleVariant) map[string]int
 		"layers":  layers,
 		"sprite":  "images/maps/sprites/" + spriteName,
 		"glyphs":  cfg.GlyphsURL,
+	}
+	if cfg.HasHeightmap {
+		doc["terrain"] = map[string]interface{}{
+			"source":       "heightmap",
+			"exaggeration": DefaultTerrainExaggeration,
+		}
 	}
 	return doc
 }
@@ -1633,24 +1647,24 @@ func isLayerVisible(name string, vis layerVisibility) bool {
 // categories. Lower values render first (below), higher values render last
 // (on top). Labels and icons must be above roads to remain readable.
 var categoryRenderOrder = map[string]int{
-	"sea":        0,
-	"contours":   1,
-	"forest":     2,
-	"rocks":      3,
-	"trail":         4,
-	"track":         5,
-	"road":          6,
-	"main_road":     7,
-	"runway":        8,
-	"buildings":     9,
-	"railway":       10,
-	"powerline":     11,
-	"buildings-3d":  12,
-	"bridges":       13,
-	"vegetation":    14,
-	"other":         15,
-	"icons":         16,
-	"labels":        17,
+	"sea":          0,
+	"contours":     1,
+	"forest":       2,
+	"rocks":        3,
+	"trail":        4,
+	"track":        5,
+	"road":         6,
+	"main_road":    7,
+	"runway":       8,
+	"buildings":    9,
+	"railway":      10,
+	"powerline":    11,
+	"buildings-3d": 12,
+	"bridges":      13,
+	"vegetation":   14,
+	"other":        15,
+	"icons":        16,
+	"labels":       17,
 }
 
 // buildVectorFeatureLayers generates MapLibre layers from vector layer names,
