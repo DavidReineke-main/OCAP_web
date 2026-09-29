@@ -19,6 +19,22 @@ const FRAMES = 180; // 3 minutes of playback
 // inside virtually any Arma world (smallest common maps are a few km).
 const BASE = [2000, 2000];
 
+// Recordings store ASL heights (the recorder uses getPosASL), so aircraft
+// altitudes are given above ground and added to the terrain height below.
+// This mirrors syntheticDEM() in cmd/gen-test-heightmap (minus its ±20 m
+// jitter) so aircraft fly at their intended height over that test terrain.
+// Ground units keep z = 0, which the 3D view treats as "on the ground".
+const TERRAIN_WORLD_SIZE = 30720;
+function syntheticGround(x, y) {
+  const u = x / TERRAIN_WORLD_SIZE;
+  const v = y / TERRAIN_WORLD_SIZE;
+  let h = 180;
+  h += 220 * Math.sin(u * 2 * Math.PI * 1.3 + 0.5) * Math.cos(v * 2 * Math.PI * 0.8);
+  h += 120 * Math.sin(u * 2 * Math.PI * 3.1 + 1.7) * Math.sin(v * 2 * Math.PI * 2.4);
+  h += 60 * Math.cos(u * 2 * Math.PI * 5.7) * Math.cos(v * 2 * Math.PI * 4.9 + 0.3);
+  return Math.max(0, h);
+}
+
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -132,7 +148,7 @@ const truckId = 100;
     const angle = (f / FRAMES) * Math.PI * 4; // two laps
     const x = center[0] + radius * Math.cos(angle);
     const y = center[1] + radius * Math.sin(angle);
-    const z = 150 + 80 * Math.sin(f / 25); // altitude oscillates 70-230m AGL-ish
+    const z = syntheticGround(x, y) + 150 + 80 * Math.sin(f / 25); // 70-230m AGL
     const dir = Math.round(((angle + Math.PI / 2) * 180) / Math.PI) % 360;
     positions.push([[x, y, z], dir, 1, []]);
   }
@@ -156,7 +172,7 @@ const truckId = 100;
     const t = f / (FRAMES - 1);
     const x = lerp(start[0], end[0], t);
     const y = lerp(start[1], end[1], t);
-    const z = lerp(start[2], end[2], t);
+    const z = syntheticGround(x, y) + lerp(start[2], end[2], t); // 400-420m AGL
     const dir = Math.round(dirBetween([x, y], [x + 1, y + (end[1] - start[1] > 0 ? 1 : -1)]));
     positions.push([[x, y, z], dir, 1, []]);
   }

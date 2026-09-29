@@ -42,6 +42,29 @@ export function clampPitch(pitch: number): number {
 /** Default pitch applied when switching into 3D mode. */
 export const DEFAULT_3D_PITCH = 55;
 
+/**
+ * Height above ground (m) from which a unit is drawn at altitude instead of
+ * draped on the terrain. Leaves headroom for DEM vs. in-game terrain mismatch.
+ */
+export const ELEVATED_MIN_AGL = 5;
+
+/**
+ * Meters above ground at which to draw a unit, or null to drape it on the terrain.
+ *
+ * Positions are ASL (the recorder uses getPosASL), so height above ground is
+ * z minus the true terrain elevation there. This applies to every unit, not
+ * just aircraft — a landed helicopter stays on the ground, a soldier on a
+ * rooftop or under a parachute goes up. Without terrain (no heightmap)
+ * height above ground is unknown, so only aircraft are lifted, by their raw z.
+ */
+export function elevatedAgl(iconType: string, z: number, groundElevation: number | null): number | null {
+  if (groundElevation === null) {
+    return AIRBORNE_ICON_TYPES.has(iconType) && z > 1 ? z : null;
+  }
+  const agl = z - groundElevation;
+  return agl >= ELEVATED_MIN_AGL ? agl : null;
+}
+
 /** Resolve an entity's registered icon image key ("type:variant"), falling back to "unknown". */
 export function resolveEntityIconKey(
   iconType: string,
@@ -375,6 +398,19 @@ export class MapLibre3DRenderer implements MapRenderer {
     );
     this.map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 
+    // Height above ground depends on DEM tiles, which stream in after the
+    // entities do — re-classify once they arrive or the covered area changes.
+    this.map.on("sourcedata", (e: any) => {
+      if (e.sourceId === "heightmap" && e.tile) {
+        this.entitiesDirty = true;
+        this.scheduleFlush();
+      }
+    });
+    this.map.on("moveend", () => {
+      this.entitiesDirty = true;
+      this.scheduleFlush();
+    });
+
     this.map.on("zoom", () => {
       this.fireEvent("zoom", this.map.getZoom());
       this.scheduleFlush();
@@ -482,7 +518,8 @@ export class MapLibre3DRenderer implements MapRenderer {
       // Sky unsupported by this MapLibre build — purely cosmetic, skip
     }
 
-    this.map.addSource("entities", { type: "geojson", data: this.buildEntityFeatureCollection() });
+    const elevated = this.classifyElevated();
+    this.map.addSource("entities", { type: "geojson", data: this.buildEntityFeatureCollection(elevated) });
     this.map.addLayer({
       id: "entities-icons",
       type: "symbol",
@@ -587,7 +624,7 @@ export class MapLibre3DRenderer implements MapRenderer {
     if (!this.map.getLayer(this.entity3DLayer.id)) {
       this.map.addLayer(this.entity3DLayer);
     }
-    this.entity3DLayer.setEntities(this.buildAirborneEntities());
+    this.entity3DLayer.setEntities(this.buildElevatedEntities(elevated));
 
     this.entitiesDirty = false;
     this.briefingDirty = false;
@@ -667,8 +704,9 @@ export class MapLibre3DRenderer implements MapRenderer {
 
     if (this.entitiesDirty) {
       const source = this.map.getSource("entities");
-      source?.setData(this.buildEntityFeatureCollection());
-      this.entity3DLayer.setEntities(this.buildAirborneEntities());
+      const elevated = this.classifyElevated();
+      source?.setData(this.buildEntityFeatureCollection(elevated));
+      this.entity3DLayer.setEntities(this.buildElevatedEntities(elevated));
       this.map.triggerRepaint();
       this.entitiesDirty = false;
       this.fitToEntitiesIfNeeded();
@@ -778,6 +816,8 @@ export class MapLibre3DRenderer implements MapRenderer {
 
   setTerrainExaggeration(exaggeration: number): void {
     this.terrainExaggeration = exaggeration;
+    this.entitiesDirty = true;
+    this.scheduleFlush();
     if (this.map && this.heightmapUrl && this.map.getSource("heightmap")) {
       this.map.setTerrain({ source: "heightmap", exaggeration });
     }
@@ -840,13 +880,34 @@ export class MapLibre3DRenderer implements MapRenderer {
     return true;
   }
 
-  private buildEntityFeatureCollection(): any {
+  /**
+   * True terrain elevation (m, without exaggeration), or null without terrain.
+   * Where a DEM tile is still loading this reads 0, matching the flat mesh
+   * MapLibre draws there meanwhile; the tile's sourcedata event re-classifies.
+   */
+  private groundElevation(position: ArmaCoord): number | null {
+    if (!this.map?.getTerrain?.()) return null;
+    const rendered = this.map.queryTerrainElevation(armaToLngLat(position));
+    return rendered === null ? null : rendered / this.terrainExaggeration;
+  }
+
+  /** Entity id -> meters above ground, for every unit drawn at altitude. */
+  private classifyElevated(): Map<number, number> {
+    const elevated = new Map<number, number>();
+    for (const e of this.entityFeatures.values()) {
+      const agl = elevatedAgl(e.iconType, e.position[2] ?? 0, this.groundElevation(e.position));
+      if (agl !== null) elevated.set(e.id, agl);
+    }
+    return elevated;
+  }
+
+  private buildEntityFeatureCollection(elevated: Map<number, number>): any {
     const zoom = this.map?.getZoom() ?? 12;
     const hideNames = zoom <= 14;
     const features = [];
     for (const e of this.entityFeatures.values()) {
-      // Aircraft/parachutes render at true altitude via Entity3DLayer instead.
-      if (AIRBORNE_ICON_TYPES.has(e.iconType)) continue;
+      // Units above ground render at altitude via Entity3DLayer instead.
+      if (elevated.has(e.id)) continue;
 
       const showName = this.computeShowName(e, hideNames);
       const iconOpacity = e.isInVehicle ? 0 : e.alive === 0 ? 0.4 : 1;
@@ -868,15 +929,17 @@ export class MapLibre3DRenderer implements MapRenderer {
     return { type: "FeatureCollection", features };
   }
 
-  private buildAirborneEntities(): AirborneEntityState[] {
+  private buildElevatedEntities(elevated: Map<number, number>): AirborneEntityState[] {
     const zoom = this.map?.getZoom() ?? 12;
     const hideNames = zoom <= 14;
     const airborne: AirborneEntityState[] = [];
     for (const e of this.entityFeatures.values()) {
-      if (!AIRBORNE_ICON_TYPES.has(e.iconType)) continue;
+      const agl = elevated.get(e.id);
+      if (agl === undefined) continue;
       airborne.push({
         id: e.id,
         position: e.position,
+        agl,
         direction: e.direction,
         iconType: e.iconType,
         side: e.side,

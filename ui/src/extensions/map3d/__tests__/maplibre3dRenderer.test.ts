@@ -6,6 +6,8 @@ import {
   clampPitch,
   resolveEntityIconKey,
   DEFAULT_3D_PITCH,
+  ELEVATED_MIN_AGL,
+  elevatedAgl,
   MapLibre3DRenderer,
 } from "../maplibre3dRenderer";
 
@@ -106,6 +108,28 @@ describe("resolveEntityIconKey", () => {
 
   it("falls back to the unknown type for unrecognized icon types", () => {
     expect(resolveEntityIconKey("spaceship", "WEST", 1, false)).toBe("unknown:blufor");
+  });
+});
+
+describe("elevatedAgl", () => {
+  it("lifts any unit type by its height above the terrain", () => {
+    expect(elevatedAgl("heli", 330, 180)).toBe(150);
+    expect(elevatedAgl("man", 212, 200)).toBe(12);
+  });
+
+  it("drapes units on or near the ground, including landed aircraft", () => {
+    expect(elevatedAgl("heli", 181, 180)).toBeNull();
+    expect(elevatedAgl("man", 180 + ELEVATED_MIN_AGL - 0.1, 180)).toBeNull();
+  });
+
+  it("drapes units recorded below the terrain (e.g. z = 0 without altitude data)", () => {
+    expect(elevatedAgl("plane", 0, 180)).toBeNull();
+  });
+
+  it("lifts only aircraft by raw z when terrain elevation is unknown", () => {
+    expect(elevatedAgl("plane", 400, null)).toBe(400);
+    expect(elevatedAgl("man", 50, null)).toBeNull();
+    expect(elevatedAgl("heli", 0, null)).toBeNull();
   });
 });
 
