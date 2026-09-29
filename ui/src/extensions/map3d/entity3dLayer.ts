@@ -42,6 +42,18 @@ export function transformPoint(m: ArrayLike<number>, x: number, y: number, z: nu
 }
 
 /**
+ * Picks the clip-space matrix for [0,1] Mercator coordinates (what
+ * lngLatAltToMercator produces). In MapLibre v5, modelViewProjectionMatrix
+ * expects world-pixel coordinates instead; using it put aircraft off-screen.
+ */
+export function mercatorMatrix(options: {
+  modelViewProjectionMatrix: ArrayLike<number>;
+  defaultProjectionData?: { mainMatrix: ArrayLike<number> };
+}): ArrayLike<number> {
+  return options.defaultProjectionData?.mainMatrix ?? options.modelViewProjectionMatrix;
+}
+
+/**
  * Renders airborne entities (aircraft, parachutes) at their true altitude
  * above the world's zero-elevation datum, with a dashed drop-line down to
  * the ground for AGL context — this is what makes "3D" actually visible for
@@ -98,14 +110,17 @@ export class Entity3DLayer {
   }
 
   private resize(): void {
-    if (!this.map || !this.canvas || !this.ctx) return;
+    if (!this.map || !this.canvas) return;
     const dpr = window.devicePixelRatio || 1;
-    const { clientWidth, clientHeight } = this.map.getCanvasContainer();
+    // Size from the GL canvas, not the canvas container: the container has no
+    // height of its own (the GL canvas inside it is absolutely positioned),
+    // so it would leave this overlay 0px tall and nothing airborne visible.
+    const { clientWidth, clientHeight } = this.map.getCanvas();
     this.canvas.style.width = `${clientWidth}px`;
     this.canvas.style.height = `${clientHeight}px`;
     this.canvas.width = Math.max(1, Math.round(clientWidth * dpr));
     this.canvas.height = Math.max(1, Math.round(clientHeight * dpr));
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   private getIcon(key: string, url: string): HTMLImageElement | null {
@@ -125,7 +140,10 @@ export class Entity3DLayer {
   }
 
   /** Called by MapLibre every render frame (`render: CustomRenderMethod`). */
-  render(_gl: WebGLRenderingContext | WebGL2RenderingContext, options: { modelViewProjectionMatrix: ArrayLike<number> }): void {
+  render(
+    _gl: WebGLRenderingContext | WebGL2RenderingContext,
+    options: { modelViewProjectionMatrix: ArrayLike<number>; defaultProjectionData?: { mainMatrix: ArrayLike<number> } },
+  ): void {
     const ctx = this.ctx;
     const canvas = this.canvas;
     if (!ctx || !canvas) return;
@@ -134,7 +152,7 @@ export class Entity3DLayer {
     const cssHeight = canvas.height / (window.devicePixelRatio || 1);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-    const matrix = options.modelViewProjectionMatrix;
+    const matrix = mercatorMatrix(options);
 
     for (const e of this.entities) {
       const [lng, lat] = armaToLngLat(e.position);
