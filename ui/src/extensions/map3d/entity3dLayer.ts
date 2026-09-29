@@ -2,12 +2,14 @@ import { METERS_PER_DEGREE, type ArmaCoord } from "../../utils/coordinates";
 import { resolveVariant, ICON_PATHS, ICON_SIZES } from "../../renderers/leaflet/canvasIcons";
 import type { Side, AliveState } from "../../data/types";
 
-/** Entity types rendered at true altitude by this layer rather than draped on the ground. */
+/** Entity types lifted by their raw z when no terrain data is available to compute height above ground. */
 export const AIRBORNE_ICON_TYPES = new Set(["heli", "plane", "parachute"]);
 
 export interface AirborneEntityState {
   id: number;
   position: ArmaCoord;
+  /** Meters above the terrain surface. */
+  agl: number;
   direction: number;
   iconType: string;
   side: Side | null;
@@ -54,9 +56,9 @@ export function mercatorMatrix(options: {
 }
 
 /**
- * Renders airborne entities (aircraft, parachutes) at their true altitude
- * above the world's zero-elevation datum, with a dashed drop-line down to
- * the ground for AGL context — this is what makes "3D" actually visible for
+ * Renders units that are above the ground (aircraft, parachutes, units on
+ * rooftops) at their height above the terrain surface, with a dashed
+ * drop-line down to the ground for AGL context — this is what makes "3D" actually visible for
  * flying units instead of them just being draped flat on the terrain like
  * ground vehicles and infantry.
  *
@@ -156,12 +158,13 @@ export class Entity3DLayer {
 
     for (const e of this.entities) {
       const [lng, lat] = armaToLngLat(e.position);
-      const altitude = e.position[2] ?? 0;
-      const air = this.projectToScreen(matrix, lng, lat, altitude, cssWidth, cssHeight);
-      const ground = this.projectToScreen(matrix, lng, lat, 0, cssWidth, cssHeight);
+      // Rendered terrain height (includes exaggeration); 0 without terrain.
+      const groundAlt = this.map?.queryTerrainElevation?.([lng, lat]) ?? 0;
+      const air = this.projectToScreen(matrix, lng, lat, groundAlt + e.agl, cssWidth, cssHeight);
+      const ground = this.projectToScreen(matrix, lng, lat, groundAlt, cssWidth, cssHeight);
       if (!air) continue;
 
-      if (ground && altitude > 1) {
+      if (ground && e.agl > 1) {
         ctx.save();
         ctx.setLineDash([4, 4]);
         ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
@@ -219,7 +222,7 @@ export class Entity3DLayer {
       ctx.lineWidth = 2;
       ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
       ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-      const altLabel = `${Math.round(altitude)}m`;
+      const altLabel = `${Math.round(e.agl)}m AGL`;
       const altY = air.y + size[1] / 2 + 12;
       ctx.strokeText(altLabel, air.x, altY);
       ctx.fillText(altLabel, air.x, altY);

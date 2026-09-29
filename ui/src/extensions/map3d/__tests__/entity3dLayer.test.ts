@@ -123,6 +123,7 @@ describe("Entity3DLayer lifecycle (smoke test under jsdom)", () => {
       {
         id: 1,
         position: [1000, 2000, 300],
+        agl: 120,
         direction: 45,
         iconType: "heli",
         side: "WEST",
