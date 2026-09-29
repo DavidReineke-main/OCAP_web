@@ -31,7 +31,6 @@ type MapInfo struct {
 	Status        MapStatus          `json:"status"`
 	LastError     string             `json:"lastError,omitempty"`
 	HasPreview    bool               `json:"hasPreview,omitempty"`
-	HasHeightmap  bool               `json:"hasHeightmap,omitempty"`
 	Elevation     *MapElevation      `json:"elevation,omitempty"`
 	FeatureLayers []string           `json:"featureLayers,omitempty"`
 	Files         map[string]float64 `json:"files,omitempty"`
@@ -95,16 +94,15 @@ func ScanMaps(mapsDir string) ([]MapInfo, error) {
 				info.Files[fc.name] = math.Round(sizeMB*100) / 100
 			}
 		}
-		_, info.HasHeightmap = info.Files["heightmap.pmtiles"]
 
 		// meta.json (pipeline output) is the primary source — has worldSize,
 		// featureLayers, and elevation stats.
 		metaJSONPath := filepath.Join(worldDir, "meta.json")
 		if data, err := os.ReadFile(metaJSONPath); err == nil {
 			var meta struct {
-				WorldSize     int           `json:"worldSize"`
-				FeatureLayers []string      `json:"featureLayers"`
-				Elevation     *MapElevation `json:"elevation"`
+				WorldSize     int             `json:"worldSize"`
+				FeatureLayers []string        `json:"featureLayers"`
+				Elevation     *MapElevation   `json:"elevation"`
 			}
 			if json.Unmarshal(data, &meta) == nil {
 				info.WorldSize = meta.WorldSize

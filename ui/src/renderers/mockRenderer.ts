@@ -195,38 +195,6 @@ export class MockRenderer implements MapRenderer {
     return {};
   }
 
-  private _is3D = false;
-  private _pitch = 0;
-  private _bearing = 0;
-
-  is3DMode(): boolean {
-    return this._is3D;
-  }
-
-  set3DMode(enabled: boolean): void {
-    this._is3D = enabled;
-  }
-
-  getPitch(): number {
-    return this._pitch;
-  }
-
-  setPitch(pitch: number): void {
-    this._pitch = pitch;
-  }
-
-  getBearing(): number {
-    return this._bearing;
-  }
-
-  setBearing(bearing: number): void {
-    this._bearing = bearing;
-  }
-
-  setTerrainExaggeration(_exaggeration: number): void {
-    // no-op
-  }
-
   /** Test helper: returns number of listeners for a given event. */
   listenerCount(event: RendererEvent): number {
     return this.listeners.get(event)?.size ?? 0;

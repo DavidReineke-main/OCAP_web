@@ -1,5 +1,5 @@
 import { METERS_PER_DEGREE, type ArmaCoord } from "../../utils/coordinates";
-import { resolveVariant, ICON_PATHS, ICON_SIZES } from "../leaflet/canvasIcons";
+import { resolveVariant, ICON_PATHS, ICON_SIZES } from "../../renderers/leaflet/canvasIcons";
 import type { Side, AliveState } from "../../data/types";
 
 /** Entity types rendered at true altitude by this layer rather than draped on the ground. */

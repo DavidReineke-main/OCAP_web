@@ -18,9 +18,6 @@ type mapJSON struct {
 	MaxZoom    int    `json:"maxZoom"`
 	MinZoom    int    `json:"minZoom"`
 	Maplibre   bool   `json:"maplibre,omitempty"`
-	// HasHeightmap signals that heightmap.pmtiles (terrain-RGB) exists and
-	// the 3D terrain view can be enabled.
-	HasHeightmap bool `json:"hasHeightmap,omitempty"`
 }
 
 // assetPath joins a URL prefix with a filename. If prefix is empty, returns filename as-is.
@@ -122,9 +119,9 @@ func NewGenerateStylesStage() Stage {
 				VectorLayers:   job.VectorLayers,
 				HasSatellite:   true,
 				HasHeightmap:   job.HasHeightmap,
-				HasHillshade:   job.HasHillshade,
-				HasBathymetry:  job.HasBathymetry,
-				HasColorRelief: job.HasColorRelief,
+				HasHillshade:     job.HasHillshade,
+				HasBathymetry:    job.HasBathymetry,
+				HasColorRelief:   job.HasColorRelief,
 				GlyphsURL:      "images/maps/fonts/{fontstack}/{range}.pbf",
 			}
 
@@ -168,14 +165,13 @@ func NewGenerateGradMehMetadataStage() Stage {
 			}
 
 			doc := mapJSON{
-				Name:         worldName,
-				WorldSize:    job.WorldSize,
-				ImageSize:    job.ImageSize,
-				Multiplier:   1,
-				MaxZoom:      maxZoom,
-				MinZoom:      job.MinZoom,
-				Maplibre:     job.HasMaplibre,
-				HasHeightmap: job.HasHeightmap,
+				Name:       worldName,
+				WorldSize:  job.WorldSize,
+				ImageSize:  job.ImageSize,
+				Multiplier: 1,
+				MaxZoom:    maxZoom,
+				MinZoom:    job.MinZoom,
+				Maplibre:   job.HasMaplibre,
 			}
 			if err := writeJSON(filepath.Join(job.OutputDir, "map.json"), doc); err != nil {
 				return fmt.Errorf("write map.json: %w", err)

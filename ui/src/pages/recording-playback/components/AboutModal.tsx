@@ -37,9 +37,6 @@ export function AboutModal(props: AboutModalProps): JSX.Element {
     return info.BuildVersion || info.BuildCommit || "unknown";
   };
 
-  // No live renderer hot-swap yet — `?renderer=3d` is set once at page load.
-  const is3DActive = () => new URLSearchParams(window.location.search).get("renderer") === "3d";
-
   return (
     <Show when={props.open()}>
       <div data-testid="about-modal" class={ui.dialogOverlay} onClick={(e) => {
@@ -95,25 +92,6 @@ export function AboutModal(props: AboutModalProps): JSX.Element {
                 <span class={styles.rowValue}>{t("shortcut_toggle_panel")}</span>
               </div>
             </div>
-
-            {/* 3D controls */}
-            <Show when={is3DActive()}>
-              <div class={styles.section}>
-                <div class={styles.sectionLabel}>{t("legend_3d_title")}</div>
-                <div class={styles.row}>
-                  <span class={styles.rowValue}>{t("legend_3d_pan")}</span>
-                </div>
-                <div class={styles.row}>
-                  <span class={styles.rowValue}>{t("legend_3d_rotate")}</span>
-                </div>
-                <div class={styles.row}>
-                  <span class={styles.rowValue}>{t("legend_3d_zoom")}</span>
-                </div>
-                <div class={styles.row}>
-                  <span class={styles.rowValue}>{t("legend_3d_compass")}</span>
-                </div>
-              </div>
-            </Show>
 
             {/* Language */}
             <div class={styles.section}>
