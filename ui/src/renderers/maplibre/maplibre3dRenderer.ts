@@ -157,6 +157,10 @@ export class MapLibre3DRenderer implements MapRenderer {
   // used both for style URLs and to manually attach a heightmap source to a
   // blank style when there's elevation data but no real MapLibre basemap.
   private tileBaseAbs: string | null = null;
+  // True while running on the blank fallback style (no real MapLibre style
+  // could be loaded). onStyleLoaded then adds its own background/hillshade
+  // layers, since a blank style paints nothing at all.
+  private usingBlankBasemap = true;
 
   private readonly entityFeatures = new Map<number, EntityFeatureState>();
   private readonly briefingFeatures = new Map<number, BriefingFeatureState>();
@@ -331,6 +335,7 @@ export class MapLibre3DRenderer implements MapRenderer {
 
       try {
         initialStyle = await fetchStyle(this.styleCandidates[initialIdx].url);
+        this.usingBlankBasemap = false;
         this._setActiveStyleIndexSig(initialIdx);
         this._setMapStylesSig(
           this.styleCandidates.map((c) => ({ label: c.label, available: false })),
