@@ -4,6 +4,7 @@ import {
   AIRBORNE_ICON_TYPES,
   transformPoint,
   lngLatAltToMercator,
+  mercatorMatrix,
   type AirborneEntityState,
 } from "../entity3dLayer";
 
@@ -55,6 +56,19 @@ describe("transformPoint", () => {
   });
 });
 
+describe("mercatorMatrix", () => {
+  it("prefers MapLibre v5's Mercator mainMatrix over the world-pixel MVP matrix", () => {
+    const mvp = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const main = [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1];
+    expect(mercatorMatrix({ modelViewProjectionMatrix: mvp, defaultProjectionData: { mainMatrix: main } })).toBe(main);
+  });
+
+  it("falls back to modelViewProjectionMatrix when no projection data is given", () => {
+    const mvp = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    expect(mercatorMatrix({ modelViewProjectionMatrix: mvp })).toBe(mvp);
+  });
+});
+
 describe("AIRBORNE_ICON_TYPES", () => {
   it("includes aircraft and parachutes", () => {
     expect(AIRBORNE_ICON_TYPES.has("heli")).toBe(true);
@@ -75,12 +89,18 @@ describe("AIRBORNE_ICON_TYPES", () => {
 // Real rendering is exercised manually / via the running app.
 describe("Entity3DLayer lifecycle (smoke test under jsdom)", () => {
   function fakeMap() {
+    // Mirrors MapLibre's DOM: the canvas container has no height of its own,
+    // only the absolutely positioned GL canvas inside it does.
     const container = document.createElement("div");
     Object.defineProperty(container, "clientWidth", { value: 800, configurable: true });
-    Object.defineProperty(container, "clientHeight", { value: 600, configurable: true });
+    Object.defineProperty(container, "clientHeight", { value: 0, configurable: true });
+    const glCanvas = document.createElement("canvas");
+    Object.defineProperty(glCanvas, "clientWidth", { value: 800, configurable: true });
+    Object.defineProperty(glCanvas, "clientHeight", { value: 600, configurable: true });
     const listeners = new Map<string, () => void>();
     return {
       getCanvasContainer: () => container,
+      getCanvas: () => glCanvas,
       on: (event: string, cb: () => void) => listeners.set(event, cb),
       off: (event: string) => listeners.delete(event),
       triggerRepaint: () => {},
@@ -121,6 +141,16 @@ describe("Entity3DLayer lifecycle (smoke test under jsdom)", () => {
     ).not.toThrow();
 
     expect(() => layer.onRemove()).not.toThrow();
+  });
+
+  it("sizes its overlay canvas to the GL canvas, not the height-less container", () => {
+    const layer = new Entity3DLayer();
+    const map = fakeMap();
+    layer.onAdd(map);
+    const overlay = map.getCanvasContainer().querySelector("canvas")!;
+    expect(overlay.style.width).toBe("800px");
+    expect(overlay.style.height).toBe("600px");
+    layer.onRemove();
   });
 
   it("setEntities accepts an empty list", () => {
