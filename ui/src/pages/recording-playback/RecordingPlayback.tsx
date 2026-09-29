@@ -10,7 +10,6 @@ import { formatElapsedTime } from "../../playback/time";
 import type { TimeMode } from "../../playback/time";
 import { LeafletRenderer } from "../../renderers/leaflet/leafletRenderer";
 import { CanvasLeafletRenderer } from "../../renderers/leaflet/canvasLeafletRenderer";
-import { MapLibre3DRenderer } from "../../renderers/maplibre/maplibre3dRenderer";
 import type { MapRenderer } from "../../renderers/renderer.interface";
 import { EngineProvider } from "../../hooks/useEngine";
 import { RendererProvider } from "../../hooks/useRenderer";
@@ -23,6 +22,7 @@ import { TopBar } from "./components/TopBar";
 import { SidePanel } from "./components/SidePanel";
 import { BottomBar } from "./components/BottomBar";
 import { MapControls } from "./components/MapControls";
+import { create3DRendererIfRequested, Map3DToggle } from "../../extensions/map3d"; // fork: map3d
 import { AboutModal } from "./components/AboutModal";
 import { CounterDisplay } from "./components/CounterDisplay";
 import { FollowIndicator } from "./components/FollowIndicator";
@@ -56,12 +56,9 @@ export function RecordingPlayback(): JSX.Element {
   const { authenticated } = useAuth();
   const api = new ApiClient();
   const rendererParam = new URLSearchParams(window.location.search).get("renderer");
-  const renderer: MapRenderer =
-    rendererParam === "dom"
-      ? new LeafletRenderer()
-      : rendererParam === "3d"
-        ? new MapLibre3DRenderer()
-        : new CanvasLeafletRenderer();
+  const renderer: MapRenderer = create3DRendererIfRequested() ?? (rendererParam === "dom" // fork: map3d
+    ? new LeafletRenderer()
+    : new CanvasLeafletRenderer());
   const engine = new PlaybackEngine(renderer);
   const markerManager = new MarkerManager(renderer);
   const [worldConfig, setWorldConfig] = createSignal<WorldConfig | undefined>(
@@ -307,6 +304,7 @@ export function RecordingPlayback(): JSX.Element {
           onSaveFocus={saveFocus}
         />
         <MapControls />
+        <Map3DToggle /> {/* fork: map3d */}
         <CounterDisplay />
         <AboutModal
           open={aboutOpen}

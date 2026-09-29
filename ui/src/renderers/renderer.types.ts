@@ -105,6 +105,4 @@ export type RendererEvent = "zoom" | "dragstart" | "click";
 
 export interface RendererControls {
   container?: HTMLElement;
-  /** True for renderers that implement a real 3D camera (currently only MapLibre3DRenderer). */
-  supports3D?: boolean;
 }

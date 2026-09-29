@@ -110,11 +110,6 @@ describe("resolveEntityIconKey", () => {
 });
 
 describe("MapLibre3DRenderer", () => {
-  it("reports 3D support via getControls()", () => {
-    const renderer = new MapLibre3DRenderer();
-    expect(renderer.getControls().supports3D).toBe(true);
-  });
-
   it("starts in 3D mode by default", () => {
     const renderer = new MapLibre3DRenderer();
     expect(renderer.is3DMode()).toBe(true);

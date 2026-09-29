@@ -194,16 +194,6 @@ export interface WorldConfig {
   hasTopoDark?: boolean;
   hasTopoRelief?: boolean;
   hasColorRelief?: boolean;
-  /** True when heightmap.pmtiles (terrain-RGB DEM) exists — enables 3D terrain. */
-  hasHeightmap?: boolean;
-  /**
-   * Absolute URL to the heightmap.pmtiles file, when known independently of
-   * tileBaseUrl — elevation data is always locally-hosted (generated via the
-   * Map Manager) even when basemap imagery itself comes from a CDN tier.
-   */
-  heightmapUrl?: string;
-  /** Optional default terrain exaggeration for the 3D view (defaults to 1.0). */
-  terrainExaggeration?: number;
   attribution?: string;
 }
 

@@ -80,25 +80,4 @@ export interface MapRenderer {
 
   // Controls
   getControls(): RendererControls;
-
-  // ==================== 3D camera & mode ====================
-
-  /** Signal accessor: true when the renderer is currently in 3D (tilted) mode. */
-  is3DMode: () => boolean;
-  /**
-   * Switch between 2D top-down and 3D perspective. Implementations that
-   * don't support 3D (e.g. the legacy Leaflet renderer) treat this as a no-op.
-   */
-  set3DMode(enabled: boolean): void;
-
-  /** Current camera pitch in degrees (0 = top-down, up to 85). */
-  getPitch(): number;
-  setPitch(pitch: number): void;
-
-  /** Current camera bearing in degrees clockwise from north. */
-  getBearing(): number;
-  setBearing(bearing: number): void;
-
-  /** Adjusts vertical terrain exaggeration (only meaningful when a heightmap is loaded). */
-  setTerrainExaggeration(exaggeration: number): void;
 }

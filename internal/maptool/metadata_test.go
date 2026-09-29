@@ -179,8 +179,6 @@ func TestNewGenerateGradMehMetadataStage(t *testing.T) {
 	assert.Equal(t, "testworld", mj.Name)
 	assert.Equal(t, 10240, mj.WorldSize)
 	assert.True(t, mj.Maplibre)
-	assert.False(t, mj.HasHeightmap)
-	assert.NotContains(t, string(mapData), "hasHeightmap")
 
 	// Verify meta.json
 	metaData, err := os.ReadFile(filepath.Join(dir, "meta.json"))
@@ -192,52 +190,6 @@ func TestNewGenerateGradMehMetadataStage(t *testing.T) {
 	assert.Equal(t, "Tester", meta.Author)
 	assert.Equal(t, 10240, meta.WorldSize)
 	assert.Equal(t, []string{"sea", "house"}, meta.FeatureLayers)
-}
-
-func TestNewGenerateGradMehMetadataStage_HasHeightmap(t *testing.T) {
-	dir := t.TempDir()
-	stage := NewGenerateGradMehMetadataStage()
-	job := &Job{
-		WorldName:    "testworld",
-		WorldSize:    256,
-		OutputDir:    dir,
-		VectorLayers: []string{"sea"},
-		HasMaplibre:  true,
-		HasHeightmap: true,
-	}
-
-	require.NoError(t, stage.Run(context.Background(), job))
-
-	mapData, err := os.ReadFile(filepath.Join(dir, "map.json"))
-	require.NoError(t, err)
-	var raw map[string]any
-	require.NoError(t, json.Unmarshal(mapData, &raw))
-	assert.Equal(t, true, raw["hasHeightmap"])
-}
-
-func TestNewGenerateStylesStage_Terrain(t *testing.T) {
-	dir := t.TempDir()
-	stage := NewGenerateStylesStage()
-	job := &Job{
-		WorldName:    "testworld",
-		OutputDir:    dir,
-		SubDirs:      true,
-		VectorLayers: []string{"sea"},
-		HasHeightmap: true,
-	}
-
-	require.NoError(t, stage.Run(context.Background(), job))
-
-	data, err := os.ReadFile(filepath.Join(dir, "styles", "topo.json"))
-	require.NoError(t, err)
-	var style map[string]any
-	require.NoError(t, json.Unmarshal(data, &style))
-	terrain, ok := style["terrain"].(map[string]any)
-	require.True(t, ok, "terrain expected in style")
-	assert.Equal(t, "heightmap", terrain["source"])
-	assert.Equal(t, 1.0, terrain["exaggeration"])
-	sources := style["sources"].(map[string]any)
-	assert.Contains(t, sources, "heightmap")
 }
 
 func TestNewGenerateStylesStage_SubDirsMkdirError(t *testing.T) {

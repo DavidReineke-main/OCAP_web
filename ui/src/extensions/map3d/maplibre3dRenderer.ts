@@ -2,7 +2,8 @@ import { createSignal, type Accessor, type Setter } from "solid-js";
 import type { ArmaCoord } from "../../utils/coordinates";
 import { METERS_PER_DEGREE } from "../../utils/coordinates";
 import type { WorldConfig } from "../../data/types";
-import type { MapRenderer } from "../renderer.interface";
+import { resolveHeightmapUrl } from "./heightmap";
+import type { MapRenderer } from "../../renderers/renderer.interface";
 import type {
   MarkerHandle,
   EntityMarkerOpts,
@@ -16,9 +17,9 @@ import type {
   MapStyleInfo,
   RendererEvent,
   RendererControls,
-} from "../renderer.types";
+} from "../../renderers/renderer.types";
 import { basePath } from "../../data/basePath";
-import { resolveVariant, ICON_PATHS, ICON_SIZES, ICON_TYPES, ICON_VARIANTS } from "../leaflet/canvasIcons";
+import { resolveVariant, ICON_PATHS, ICON_SIZES, ICON_TYPES, ICON_VARIANTS } from "../../renderers/leaflet/canvasIcons";
 import { Entity3DLayer, AIRBORNE_ICON_TYPES, type AirborneEntityState } from "./entity3dLayer";
 
 // --------------- Coordinate conversion (pure functions for testing) ---------------
@@ -66,7 +67,7 @@ interface EntityFeatureState {
   isInVehicle: boolean;
   alive: import("../../data/types").AliveState;
   hit: boolean;
-  crew?: import("../renderer.types").CrewInfo;
+  crew?: import("../../renderers/renderer.types").CrewInfo;
 }
 
 type BriefingGroup = "briefingMarkers" | "systemMarkers" | "projectileMarkers";
@@ -151,6 +152,8 @@ const GROUP_DEFAULT_VISIBLE: Record<BriefingGroup, boolean> = {
 export class MapLibre3DRenderer implements MapRenderer {
   private map: any = null;
   private world!: WorldConfig;
+  // Resolved in initAsync() by probing for heightmap.pmtiles; null = flat terrain.
+  private heightmapUrl: string | null = null;
   private ready = false;
   private terrainExaggeration = 1.0;
   // Absolute base URL for this world's tile assets (e.g. "http://host/images/maps/altis"),
@@ -252,7 +255,6 @@ export class MapLibre3DRenderer implements MapRenderer {
 
   init(container: HTMLElement, world: WorldConfig): void {
     this.world = world;
-    this.terrainExaggeration = world.terrainExaggeration ?? 1.0;
 
     void this.initAsync(container, world);
   }
@@ -299,6 +301,8 @@ export class MapLibre3DRenderer implements MapRenderer {
       const raw = world.tileBaseUrl;
       this.tileBaseAbs = raw.startsWith("http") ? raw : new URL(raw, window.location.origin).href;
     }
+
+    this.heightmapUrl = await resolveHeightmapUrl(world.worldName, this.tileBaseAbs, absBase);
 
     if (canUseMapLibreStyle) {
       const isAbsoluteUrl = (u: string) => /^(\w+:)?\/\/|^data:/.test(u);
@@ -426,21 +430,15 @@ export class MapLibre3DRenderer implements MapRenderer {
   private onStyleLoaded(): void {
     if (!this.map) return;
 
-    if (this.world.hasHeightmap) {
-      // A real generated style already declares this source; a blank/no-basemap
-      // style doesn't, so attach it manually — elevation data is independently
-      // useful even without real basemap imagery on top of it. Prefer
-      // world.heightmapUrl (set when elevation was resolved separately from
-      // basemap imagery, e.g. local heightmap + CDN-hosted imagery); fall
-      // back to deriving it from tileBaseAbs for a genuine single-source
-      // (fully local or fully CDN) deployment.
-      const heightmapUrl =
-        this.world.heightmapUrl ?? (this.tileBaseAbs ? this.tileBaseAbs + "/tiles/heightmap.pmtiles" : null);
-      if (!this.map.getSource("heightmap") && heightmapUrl) {
+    if (this.heightmapUrl) {
+      // A real generated style may already declare this source; a blank style
+      // doesn't, so attach it manually — elevation data is useful even
+      // without basemap imagery on top of it.
+      if (!this.map.getSource("heightmap")) {
         try {
           this.map.addSource("heightmap", {
             type: "raster-dem",
-            url: "pmtiles://" + heightmapUrl,
+            url: "pmtiles://" + this.heightmapUrl,
             tileSize: 256,
           });
         } catch (err) {
@@ -780,7 +778,7 @@ export class MapLibre3DRenderer implements MapRenderer {
 
   setTerrainExaggeration(exaggeration: number): void {
     this.terrainExaggeration = exaggeration;
-    if (this.map && this.world?.hasHeightmap && this.map.getSource("heightmap")) {
+    if (this.map && this.heightmapUrl && this.map.getSource("heightmap")) {
       this.map.setTerrain({ source: "heightmap", exaggeration });
     }
   }
@@ -1209,6 +1207,6 @@ export class MapLibre3DRenderer implements MapRenderer {
   }
 
   getControls(): RendererControls {
-    return { container: this.map?.getContainer(), supports3D: true };
+    return { container: this.map?.getContainer() };
   }
 }
