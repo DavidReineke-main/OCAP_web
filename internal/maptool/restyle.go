@@ -79,5 +79,32 @@ func RestyleWorld(mapsDir, worldName string) error {
 		}
 	}
 
+	// 5. Keep the hasHeightmap flag in map.json in sync (preserving other fields)
+	if err := updateMapJSONHeightmap(filepath.Join(worldDir, "map.json"), styleCfg.HasHeightmap); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// updateMapJSONHeightmap sets or removes the hasHeightmap flag in an existing
+// map.json. A missing map.json is not an error.
+func updateMapJSONHeightmap(path string, hasHeightmap bool) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read map.json: %w", err)
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("parse map.json: %w", err)
+	}
+	if hasHeightmap {
+		doc["hasHeightmap"] = true
+	} else {
+		delete(doc, "hasHeightmap")
+	}
+	return writeJSON(path, doc)
 }

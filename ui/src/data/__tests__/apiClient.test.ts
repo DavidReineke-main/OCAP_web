@@ -273,22 +273,68 @@ describe("ApiClient", () => {
 
   describe("getWorldConfig", () => {
     it("fetches world config from map.json", async () => {
+      // map.json succeeds; the follow-up local heightmap.pmtiles HEAD probe
+      // (independent of map.json) fails, so hasHeightmap stays unset.
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: () => Promise.resolve({ worldName: "altis", worldSize: 30720, maxZoom: 18, minZoom: 10 }),
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found" });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const client = new ApiClient("/aar/");
+      const result = await client.getWorldConfig("altis");
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/aar/images/maps/altis/map.json",
+        expect.anything(),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/aar/images/maps/altis/tiles/heightmap.pmtiles",
+        expect.objectContaining({ method: "HEAD" }),
+      );
+      expect(result.worldName).toBe("altis");
+      expect(result.worldSize).toBe(30720);
+      expect(result.hasHeightmap).toBeUndefined();
+    });
+
+    it("layers a local heightmap onto a CDN-resolved world (imagery and elevation from different sources)", async () => {
+      const fetchMock = vi.fn()
+        // 1st call: local map.json → fail
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found", json: () => Promise.reject(new Error("no body")) })
+        // 2nd call: pmtiles CDN → fail
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found", json: () => Promise.reject(new Error("no body")) })
+        // 3rd call: raster CDN → success (no heightmap of its own)
+        .mockResolvedValueOnce({ ok: true, status: 200, statusText: "OK", json: () => Promise.resolve({ worldSize: 30720 }) })
+        // 4th call: local heightmap.pmtiles HEAD probe → found
+        .mockResolvedValueOnce({ ok: true, status: 200, statusText: "OK" });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const client = new ApiClient("/aar/");
+      const result = await client.getWorldConfig("altis");
+
+      expect(result.tileBaseUrl).toBe("https://maps.ocap2.com/altis");
+      expect(result.hasHeightmap).toBe(true);
+      expect(result.heightmapUrl).toBe("/aar/images/maps/altis/tiles/heightmap.pmtiles");
+    });
+
+    it("exposes hasHeightmap from map.json", async () => {
       mockFetchJson({
-        worldName: "altis",
         worldSize: 30720,
         maxZoom: 18,
         minZoom: 10,
+        maplibre: true,
+        hasHeightmap: true,
       });
 
       const client = new ApiClient("/aar/");
       const result = await client.getWorldConfig("altis");
 
-      expect(fetch).toHaveBeenCalledWith(
-        "/aar/images/maps/altis/map.json",
-        expect.anything(),
-      );
-      expect(result.worldName).toBe("altis");
-      expect(result.worldSize).toBe(30720);
+      expect(result.hasHeightmap).toBe(true);
+      expect(result.maplibre).toBe(true);
     });
 
     it("falls back to PMTiles CDN when local fetch fails", async () => {
@@ -306,13 +352,15 @@ describe("ApiClient", () => {
           status: 200,
           statusText: "OK",
           json: () => Promise.resolve({ worldSize: 30720, maxZoom: 18, minZoom: 10 }),
-        });
+        })
+        // 3rd call: local heightmap.pmtiles HEAD probe → not found
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found" });
       vi.stubGlobal("fetch", fetchMock);
 
       const client = new ApiClient("/aar/");
       const result = await client.getWorldConfig("Altis");
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(fetchMock.mock.calls[1][0]).toBe("https://pmtiles.ocap2.com/altis/map.json");
       expect(result.worldName).toBe("Altis");
       expect(result.worldSize).toBe(30720);
@@ -342,13 +390,15 @@ describe("ApiClient", () => {
           status: 200,
           statusText: "OK",
           json: () => Promise.resolve({ worldSize: 16384, maxZoom: 6, minZoom: 0 }),
-        });
+        })
+        // 4th call: local heightmap.pmtiles HEAD probe → not found
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found" });
       vi.stubGlobal("fetch", fetchMock);
 
       const client = new ApiClient("/aar/");
       const result = await client.getWorldConfig("Stratis");
 
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
       expect(fetchMock.mock.calls[2][0]).toBe("https://maps.ocap2.com/stratis/map.json");
       expect(result.worldName).toBe("Stratis");
       expect(result.worldSize).toBe(16384);
@@ -379,13 +429,15 @@ describe("ApiClient", () => {
           status: 404,
           statusText: "Not Found",
           json: () => Promise.reject(new Error("no body")),
-        });
+        })
+        // 4th call: local heightmap.pmtiles HEAD probe → not found
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found" });
       vi.stubGlobal("fetch", fetchMock);
 
       const client = new ApiClient("/aar/");
       const result = await client.getWorldConfig("UnknownWorld");
 
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
       expect(result.worldSize).toBe(30720);
       expect(result.imageSize).toBe(30720);
       expect(result.tileBaseUrl).toBeUndefined();
@@ -405,13 +457,15 @@ describe("ApiClient", () => {
           status: 200,
           statusText: "OK",
           json: () => Promise.resolve({ worldSize: 30720 }),
-        });
+        })
+        // 3rd call: local heightmap.pmtiles HEAD probe → not found
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found" });
       vi.stubGlobal("fetch", fetchMock);
 
       const client = new ApiClient("/aar/");
       const result = await client.getWorldConfig("Altis");
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(result.maplibre).toBe(true);
     });
 
@@ -420,6 +474,8 @@ describe("ApiClient", () => {
       const fetchMock = vi.fn()
         .mockRejectedValueOnce(new TypeError("Failed to fetch"))
         .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        // local heightmap.pmtiles HEAD probe → also throws
         .mockRejectedValueOnce(new TypeError("Failed to fetch"));
       vi.stubGlobal("fetch", fetchMock);
 
@@ -453,7 +509,9 @@ describe("ApiClient", () => {
           status: 200,
           statusText: "OK",
           json: () => Promise.resolve({ worldSize: 16384 }),
-        });
+        })
+        // 4th: local heightmap.pmtiles HEAD probe → not found
+        .mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found" });
       vi.stubGlobal("fetch", fetchMock);
 
       const client = new ApiClient("/aar/");

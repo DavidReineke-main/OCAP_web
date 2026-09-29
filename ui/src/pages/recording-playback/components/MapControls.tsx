@@ -28,8 +28,29 @@ export function MapControls(): JSX.Element {
       .filter((s) => s.available),
   );
 
+  // No live renderer hot-swap yet (see add-3d-map-view.md Step 4) — this
+  // reloads the page with the `renderer` query param toggled, which is the
+  // only way today to switch between the 2D and 3D renderers.
+  const is3DActive = () => new URLSearchParams(window.location.search).get("renderer") === "3d";
+  const handleToggleRenderer = () => {
+    const url = new URL(window.location.href);
+    if (is3DActive()) {
+      url.searchParams.delete("renderer");
+    } else {
+      url.searchParams.set("renderer", "3d");
+    }
+    window.location.href = url.toString();
+  };
+
   return (
     <>
+      <button
+        class={`${styles.mode3DBtn} ${is3DActive() ? styles.mode3DBtnActive : ""}`}
+        onClick={handleToggleRenderer}
+        title={t("toggle_3d")}
+      >
+        {is3DActive() ? "3D" : "2D"}
+      </button>
       <div class={styles.zoomControls}>
         <button class={styles.zoomBtn} onClick={handleZoomIn} title={t("zoom_in")}>
           +
