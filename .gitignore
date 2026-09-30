@@ -12,7 +12,6 @@
 # Runtime data
 data.db
 /data/
-/maps/
 setting.json
 scripts/mock-mission/*.json.gz
 
