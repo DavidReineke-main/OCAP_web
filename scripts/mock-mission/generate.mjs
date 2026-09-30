@@ -6,7 +6,7 @@
 // Usage:
 //   node generate.mjs [worldName]
 //
-// Writes ./mock-mission.json.gz in the current directory.
+// Writes ./mock-mission-<worldName>.json.gz in the current directory.
 
 import { gzipSync } from "node:zlib";
 import { writeFileSync } from "node:fs";
@@ -15,9 +15,18 @@ const worldName = process.argv[2] ?? "altis";
 const FPS = 1; // captureDelay: 1 second between frames
 const FRAMES = 180; // 3 minutes of playback
 
-// Small, generic coordinate range near a map's origin corner so it fits
-// inside virtually any Arma world (smallest common maps are a few km).
-const BASE = [2000, 2000];
+// Per-world setup: where the action happens (BASE) and the terrain height
+// used to turn the aircrafts' above-ground altitudes into ASL (see below).
+const WORLDS = {
+  // Near the origin corner, over the synthetic cmd/gen-test-heightmap terrain.
+  altis: { base: [2000, 2000], ground: syntheticGround },
+  // Coast west of the port, heli over the harbour, plane across the bay.
+  // The terrain estimated by cmd/relief-to-heightmap stays below ~20 m, so
+  // ASL is close enough to AGL for the aircraft.
+  archie: { base: [4600, 2600], ground: () => 0 },
+};
+const world = WORLDS[worldName] ?? { base: [2000, 2000], ground: () => 0 };
+const BASE = world.base;
 
 // Recordings store ASL heights (the recorder uses getPosASL), so aircraft
 // altitudes are given above ground and added to the terrain height below.
@@ -148,7 +157,7 @@ const truckId = 100;
     const angle = (f / FRAMES) * Math.PI * 4; // two laps
     const x = center[0] + radius * Math.cos(angle);
     const y = center[1] + radius * Math.sin(angle);
-    const z = syntheticGround(x, y) + 150 + 80 * Math.sin(f / 25); // 70-230m AGL
+    const z = world.ground(x, y) + 150 + 80 * Math.sin(f / 25); // 70-230m AGL
     const dir = Math.round(((angle + Math.PI / 2) * 180) / Math.PI) % 360;
     positions.push([[x, y, z], dir, 1, []]);
   }
@@ -172,7 +181,7 @@ const truckId = 100;
     const t = f / (FRAMES - 1);
     const x = lerp(start[0], end[0], t);
     const y = lerp(start[1], end[1], t);
-    const z = syntheticGround(x, y) + lerp(start[2], end[2], t); // 400-420m AGL
+    const z = world.ground(x, y) + lerp(start[2], end[2], t); // 400-420m AGL
     const dir = Math.round(dirBetween([x, y], [x + 1, y + (end[1] - start[1] > 0 ? 1 : -1)]));
     positions.push([[x, y, z], dir, 1, []]);
   }
@@ -236,7 +245,7 @@ const events = [
 
 const mission = {
   worldName,
-  missionName: "3D View Mock Mission",
+  missionName: `3D View Mock Mission (${worldName})`,
   missionAuthor: "mock-mission-generator",
   endFrame: FRAMES - 1,
   captureDelay: 1 / FPS,
@@ -250,6 +259,6 @@ const mission = {
 
 const json = JSON.stringify(mission);
 const gz = gzipSync(Buffer.from(json, "utf-8"));
-writeFileSync("mock-mission.json.gz", gz);
+writeFileSync(`mock-mission-${worldName}.json.gz`, gz);
 
-console.log(`Wrote mock-mission.json.gz (${gz.length} bytes, ${entities.length} entities, ${FRAMES} frames, worldName="${worldName}")`);
+console.log(`Wrote mock-mission-${worldName}.json.gz (${gz.length} bytes, ${entities.length} entities, ${FRAMES} frames, worldName="${worldName}")`);
