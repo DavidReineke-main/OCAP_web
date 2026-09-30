@@ -1,0 +1,19 @@
+{
+  "addonUrl": "",
+  "attribution": "SSG - Kalle",
+  "cellSize": 6,
+  "displayName": "Archie, Summer",
+  "hasColorRelief": true,
+  "hasTopo": true,
+  "hasTopoDark": true,
+  "hasTopoRelief": true,
+  "imageSize": 12288,
+  "latitude": -56,
+  "longitude": 16,
+  "maxZoom": 6,
+  "multiplier": 1.0,
+  "worldName": "archie",
+  "worldNameOriginal": "archie",
+  "worldSize": 12288,
+  "worldname": "archie"
+}
