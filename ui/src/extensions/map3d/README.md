@@ -20,12 +20,34 @@ No backend changes: the renderer finds `tiles/heightmap.pmtiles` itself
 (`heightmap.ts`) and enables terrain with `map.setTerrain()`. Translations
 are merged into the shared table at runtime (`i18n.ts`).
 
+## Maps
+
+- **MapLibre worlds** (2.0 pipeline): the world's own styles, terrain from
+  `tiles/heightmap.pmtiles`.
+- **Legacy raster worlds** (gdal2tiles `{z}/{x}/{y}.png`, as used by the 2D
+  Leaflet view): `legacyRaster.ts` serves the existing tiles to MapLibre
+  through an `ocaplegacy://` protocol, switchable between topo, topoDark,
+  topoRelief and colorRelief like in 2D.
+- **Terrain** is always read through the `ocapdem://` protocol, which sets
+  the transparent no-data area around the world to sea level (Terrain-RGB
+  would read it as -10000 m and sink the map into a pit).
+- **No heightmap?** For a legacy world that has `<world>_colorRelief.tif`,
+  `cmd/relief-to-heightmap` estimates one from the colours (relief shape is
+  good, absolute heights are rough):
+
+  ```bash
+  go run ./cmd/relief-to-heightmap -maps maps -world archie
+  ```
+
+  It needs `gdal_translate` and `pmtiles` on the PATH.
+
 ## Files
 
 - `index.ts`: entry point (`create3DRendererIfRequested`, `Map3DToggle`)
 - `maplibre3dRenderer.ts`: `MapRenderer` implementation on native MapLibre GL with terrain
 - `entity3dLayer.ts`: custom layer for airborne units (altitude, drop lines)
-- `heightmap.ts`: heightmap discovery (tile base first, then local maps folder)
+- `heightmap.ts`: heightmap discovery (tile base first, then local maps folder) and the no-data-filling terrain protocol
+- `legacyRaster.ts`: legacy raster tiles as Web Mercator tiles
 - `Map3DToggle.tsx`: 2D/3D switch button, and its tooltip is the camera legend in 3D
 - `i18n.ts`, `mode.ts`: translations, `?renderer=3d` check
 
