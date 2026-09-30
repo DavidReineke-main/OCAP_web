@@ -2,7 +2,8 @@ import { createSignal, type Accessor, type Setter } from "solid-js";
 import type { ArmaCoord } from "../../utils/coordinates";
 import { METERS_PER_DEGREE } from "../../utils/coordinates";
 import type { WorldConfig } from "../../data/types";
-import { resolveHeightmapUrl } from "./heightmap";
+import { demSource, registerDemProtocol, resolveHeightmapUrl } from "./heightmap";
+import { legacyStyles, legacyTileUrl, registerLegacyRasterProtocol, type LegacyStyle } from "./legacyRaster";
 import type { MapRenderer } from "../../renderers/renderer.interface";
 import type {
   MarkerHandle,
@@ -38,6 +39,9 @@ export function lngLatToArma(lngLat: { lng: number; lat: number }): ArmaCoord {
 export function clampPitch(pitch: number): number {
   return Math.min(85, Math.max(0, pitch));
 }
+
+const LEGACY_STYLE_KEY = "ocap-legacy3d-style";
+const TERRAIN_SOURCE = "terrain-dem";
 
 /** Default pitch applied when switching into 3D mode. */
 export const DEFAULT_3D_PITCH = 55;
@@ -147,7 +151,9 @@ function rasterize(img: HTMLImageElement, size: [number, number], dpr: number): 
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(size[0] * dpr));
   canvas.height = Math.max(1, Math.round(size[1] * dpr));
-  const ctx = canvas.getContext("2d");
+  // CPU-backed: getImageData() on a GPU canvas forces a slow read-back,
+  // and this runs for every icon variant at startup.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -177,6 +183,8 @@ export class MapLibre3DRenderer implements MapRenderer {
   private world!: WorldConfig;
   // Resolved in initAsync() by probing for heightmap.pmtiles; null = flat terrain.
   private heightmapUrl: string | null = null;
+  // Terrain source spec for heightmapUrl (see demSource()); null = flat terrain.
+  private terrainSource: Record<string, unknown> | null = null;
   private ready = false;
   private terrainExaggeration = 1.0;
   // Absolute base URL for this world's tile assets (e.g. "http://host/images/maps/altis"),
@@ -187,6 +195,9 @@ export class MapLibre3DRenderer implements MapRenderer {
   // could be loaded). onStyleLoaded then adds its own background/hillshade
   // layers, since a blank style paints nothing at all.
   private usingBlankBasemap = true;
+  // Legacy raster tile sets (worlds without a MapLibre style), drawn on the
+  // blank style through the ocaplegacy:// protocol. Empty when unused.
+  private legacyStyles: LegacyStyle[] = [];
 
   private readonly entityFeatures = new Map<number, EntityFeatureState>();
   private readonly briefingFeatures = new Map<number, BriefingFeatureState>();
@@ -326,6 +337,12 @@ export class MapLibre3DRenderer implements MapRenderer {
     }
 
     this.heightmapUrl = await resolveHeightmapUrl(world.worldName, this.tileBaseAbs, absBase);
+    if (this.heightmapUrl) {
+      this.terrainSource = await demSource(this.heightmapUrl).catch((err) => {
+        console.warn("[MapLibre3DRenderer] Could not read heightmap", err);
+        return null;
+      });
+    }
 
     if (canUseMapLibreStyle) {
       const isAbsoluteUrl = (u: string) => /^(\w+:)?\/\/|^data:/.test(u);
@@ -377,7 +394,19 @@ export class MapLibre3DRenderer implements MapRenderer {
       }
     }
 
+    // Worlds with only the legacy raster pipeline: show their own tiles.
+    if (!canUseMapLibreStyle && this.tileBaseAbs) {
+      this.legacyStyles = legacyStyles(world);
+      if (this.legacyStyles.length > 0) {
+        const saved = parseInt(localStorage.getItem(LEGACY_STYLE_KEY) ?? "0", 10) || 0;
+        this._setActiveStyleIndexSig(saved >= 0 && saved < this.legacyStyles.length ? saved : 0);
+        this._setMapStylesSig(this.legacyStyles.map((s) => ({ label: s.label, available: true })));
+      }
+    }
+
     const maplibregl = await import("maplibre-gl");
+    if (this.legacyStyles.length > 0) registerLegacyRasterProtocol(maplibregl);
+    if (this.terrainSource) registerDemProtocol(maplibregl);
     this.map = new maplibregl.Map({
       container,
       style: initialStyle,
@@ -401,7 +430,7 @@ export class MapLibre3DRenderer implements MapRenderer {
     // Height above ground depends on DEM tiles, which stream in after the
     // entities do — re-classify once they arrive or the covered area changes.
     this.map.on("sourcedata", (e: any) => {
-      if (e.sourceId === "heightmap" && e.tile) {
+      if (e.sourceId === TERRAIN_SOURCE && e.tile) {
         this.entitiesDirty = true;
         this.scheduleFlush();
       }
@@ -429,13 +458,17 @@ export class MapLibre3DRenderer implements MapRenderer {
     });
 
     this.map.once("load", () => {
-      this.map.fitBounds(
-        [
-          [0, 0],
-          [worldSizeDeg, worldSizeDeg],
-        ],
-        { animate: false },
-      );
+      // "load" waits for every initial tile, so on slow machines it can fire
+      // after the camera already moved to the recording's units — keep that.
+      if (!this.hasFitToEntities) {
+        this.map.fitBounds(
+          [
+            [0, 0],
+            [worldSizeDeg, worldSizeDeg],
+          ],
+          { animate: false },
+        );
+      }
       this.probeStyleAvailability();
       void this.preloadEntityIcons();
     });
@@ -466,23 +499,19 @@ export class MapLibre3DRenderer implements MapRenderer {
   private onStyleLoaded(): void {
     if (!this.map) return;
 
-    if (this.heightmapUrl) {
-      // A real generated style may already declare this source; a blank style
-      // doesn't, so attach it manually — elevation data is useful even
-      // without basemap imagery on top of it.
-      if (!this.map.getSource("heightmap")) {
+    // Our own terrain source, even when the style declares a "heightmap"
+    // source for its hillshade layers: ours fills the no-data area around
+    // the world with sea level instead of a -10000 m pit.
+    if (this.terrainSource) {
+      if (!this.map.getSource(TERRAIN_SOURCE)) {
         try {
-          this.map.addSource("heightmap", {
-            type: "raster-dem",
-            url: "pmtiles://" + this.heightmapUrl,
-            tileSize: 256,
-          });
+          this.map.addSource(TERRAIN_SOURCE, this.terrainSource);
         } catch (err) {
-          console.warn("[MapLibre3DRenderer] Could not attach heightmap source", err);
+          console.warn("[MapLibre3DRenderer] Could not attach terrain source", err);
         }
       }
-      if (this.map.getSource("heightmap")) {
-        this.map.setTerrain({ source: "heightmap", exaggeration: this.terrainExaggeration });
+      if (this.map.getSource(TERRAIN_SOURCE)) {
+        this.map.setTerrain({ source: TERRAIN_SOURCE, exaggeration: this.terrainExaggeration });
       }
     }
 
@@ -496,11 +525,23 @@ export class MapLibre3DRenderer implements MapRenderer {
       if (!this.map.getLayer("bg")) {
         this.map.addLayer({ id: "bg", type: "background", paint: { "background-color": "#3a4a34" } });
       }
-      if (this.map.getSource("heightmap") && !this.map.getLayer("heightmap-hillshade")) {
+      if (this.legacyStyles.length > 0 && !this.map.getSource("legacy-basemap")) {
+        const worldDeg = this.world.worldSize / METERS_PER_DEGREE;
+        this.map.addSource("legacy-basemap", {
+          type: "raster",
+          tiles: [this.legacyTileUrl(this._activeStyleIndexSig())],
+          tileSize: 256,
+          bounds: [0, 0, worldDeg, worldDeg],
+          maxzoom: 18,
+        });
+        this.map.addLayer({ id: "legacy-basemap", type: "raster", source: "legacy-basemap" });
+      }
+      // Legacy imagery already has hillshading baked in; only shade a bare DEM.
+      if (this.legacyStyles.length === 0 && this.map.getSource(TERRAIN_SOURCE) && !this.map.getLayer("heightmap-hillshade")) {
         this.map.addLayer({
           id: "heightmap-hillshade",
           type: "hillshade",
-          source: "heightmap",
+          source: TERRAIN_SOURCE,
           paint: { "hillshade-exaggeration": 1 },
         });
       }
@@ -818,8 +859,8 @@ export class MapLibre3DRenderer implements MapRenderer {
     this.terrainExaggeration = exaggeration;
     this.entitiesDirty = true;
     this.scheduleFlush();
-    if (this.map && this.heightmapUrl && this.map.getSource("heightmap")) {
-      this.map.setTerrain({ source: "heightmap", exaggeration });
+    if (this.map && this.map.getSource(TERRAIN_SOURCE)) {
+      this.map.setTerrain({ source: TERRAIN_SOURCE, exaggeration });
     }
   }
 
@@ -1236,7 +1277,28 @@ export class MapLibre3DRenderer implements MapRenderer {
     this.scheduleFlush();
   }
 
+  private legacyTileUrl(index: number): string {
+    const style = this.legacyStyles[index] ?? this.legacyStyles[0];
+    return legacyTileUrl({
+      base: style.path ? `${this.tileBaseAbs}/${style.path}` : this.tileBaseAbs!,
+      imageSize: this.world.imageSize ?? this.world.worldSize,
+      multiplier: this.world.multiplier ?? 1,
+      maxZoom: this.world.maxZoom ?? 6,
+    });
+  }
+
   setMapStyle(index: number): void {
+    if (this.legacyStyles.length > 0) {
+      if (index < 0 || index >= this.legacyStyles.length) return;
+      this._setActiveStyleIndexSig(index);
+      this.map?.getSource("legacy-basemap")?.setTiles([this.legacyTileUrl(index)]);
+      try {
+        localStorage.setItem(LEGACY_STYLE_KEY, String(index));
+      } catch {
+        // Storage unavailable — style choice just won't persist across reloads
+      }
+      return;
+    }
     if (!this.map || !this.fetchStyle || index < 0 || index >= this.styleCandidates.length) return;
     this.ready = false;
     this.fetchStyle(this.styleCandidates[index].url).then((style) => {

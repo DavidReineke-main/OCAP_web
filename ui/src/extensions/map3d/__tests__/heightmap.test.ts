@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { resolveHeightmapUrl } from "../heightmap";
+import { fillNoData, isOpaquePng, resolveHeightmapUrl } from "../heightmap";
 
 describe("resolveHeightmapUrl", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -31,5 +31,37 @@ describe("resolveHeightmapUrl", () => {
   it("returns null when fetch fails", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
     await expect(resolveHeightmapUrl("altis", null, "http://host/")).resolves.toBeNull();
+  });
+});
+
+describe("fillNoData", () => {
+  it("turns transparent no-data pixels into sea level (0 m in Terrain-RGB)", () => {
+    const px = new Uint8ClampedArray([0, 0, 0, 0, 10, 20, 30, 255]);
+    expect(fillNoData(px)).toBe(true);
+    const [r, g, b, a] = px;
+    expect(-10000 + (r * 65536 + g * 256 + b) * 0.1).toBeCloseTo(0, 6);
+    expect(a).toBe(255);
+    expect([...px.slice(4)]).toEqual([10, 20, 30, 255]);
+  });
+
+  it("reports when a tile had nothing to fill", () => {
+    expect(fillNoData(new Uint8ClampedArray([1, 2, 3, 255]))).toBe(false);
+  });
+});
+
+describe("isOpaquePng", () => {
+  function pngWithColourType(type: number): ArrayBuffer {
+    const bytes = new Uint8Array(33);
+    bytes[25] = type; // IHDR colour type
+    return bytes.buffer;
+  }
+
+  it("skips RGB and greyscale tiles", () => {
+    expect(isOpaquePng(pngWithColourType(2))).toBe(true);
+    expect(isOpaquePng(pngWithColourType(0))).toBe(true);
+  });
+
+  it("patches tiles with an alpha channel", () => {
+    expect(isOpaquePng(pngWithColourType(6))).toBe(false);
   });
 });
