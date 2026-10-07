@@ -31,7 +31,15 @@ are merged into the shared table at runtime (`i18n.ts`).
 - **Terrain** is always read through the `ocapdem://` protocol, which sets
   the transparent no-data area around the world to sea level (Terrain-RGB
   would read it as -10000 m and sink the map into a pit).
-- **No heightmap?** For a legacy world that has `<world>_colorRelief.tif`,
+- **Worlds from ocap-renderterrain** need their DEM turned into a heightmap
+  once; that pipeline reads `<world>.asc` but never writes one:
+
+  ```bash
+  go run ./cmd/asc-to-heightmap -maps maps -world archie   # reads maps/archie/archie.asc
+  ```
+
+  It needs `gdal_translate` and `pmtiles` on the PATH.
+- **No DEM at all?** For a legacy world that has `<world>_colorRelief.tif`,
   `cmd/relief-to-heightmap` estimates one from the colours (relief shape is
   good, absolute heights are rough):
 

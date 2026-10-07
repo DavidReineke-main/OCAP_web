@@ -9,7 +9,9 @@
 // Writes ./mock-mission-<worldName>.json.gz in the current directory.
 
 import { gzipSync } from "node:zlib";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const worldName = process.argv[2] ?? "altis";
 const FPS = 1; // captureDelay: 1 second between frames
@@ -21,11 +23,45 @@ const WORLDS = {
   // Near the origin corner, over the synthetic cmd/gen-test-heightmap terrain.
   altis: { base: [2000, 2000], ground: syntheticGround },
   // Coast west of the port, heli over the harbour, plane across the bay.
-  // The terrain estimated by cmd/relief-to-heightmap stays below ~20 m, so
-  // ASL is close enough to AGL for the aircraft.
-  archie: { base: [4600, 2600], ground: () => 0 },
+  // Heights come from the world's real DEM (maps/archie/archie.asc), so
+  // every unit gets an ASL z like in a real recording.
+  archie: { base: [4600, 2600], ground: ascGround("archie"), groundUnitsOnTerrain: true },
 };
 const world = WORLDS[worldName] ?? { base: [2000, 2000], ground: () => 0 };
+// Ground units: terrain height (sea surface at least) when the DEM is real,
+// else z = 0, which the 3D view treats as "on the ground".
+const unitZ = (x, y) => (world.groundUnitsOnTerrain ? Math.max(0, world.ground(x, y)) : 0);
+
+/**
+ * Terrain height from maps/<world>/<world>.asc (ESRI ASCII grid, row 0 =
+ * north), sampled at the nearest cell; 0 if the file is missing.
+ */
+function ascGround(name) {
+  const path = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "maps", name, `${name}.asc`);
+  if (!existsSync(path)) {
+    console.warn(`No ${path} — using 0 m terrain`);
+    return () => 0;
+  }
+  const lines = readFileSync(path, "utf-8").split("\n");
+  const header = {};
+  let row = 0;
+  while (/^[a-zA-Z]/.test(lines[row])) {
+    const [k, v] = lines[row].trim().split(/\s+/);
+    header[k.toLowerCase()] = Number(v);
+    row++;
+  }
+  const { ncols, nrows, cellsize } = header;
+  const xll = header.xllcorner ?? 0;
+  const yll = header.yllcorner ?? 0;
+  const nodata = header.nodata_value ?? -9999;
+  const cells = lines.slice(row, row + nrows).map((l) => l.trim().split(/\s+/).map(Number));
+  return (x, y) => {
+    const col = Math.min(ncols - 1, Math.max(0, Math.floor((x - xll) / cellsize)));
+    const r = Math.min(nrows - 1, Math.max(0, nrows - 1 - Math.floor((y - yll) / cellsize)));
+    const v = cells[r][col];
+    return v === nodata ? 0 : v;
+  };
+}
 const BASE = world.base;
 
 // Recordings store ASL heights (the recorder uses getPosASL), so aircraft
@@ -67,7 +103,7 @@ function unitPositions({ offset, isPlayer, inVehicleUntilFrame, vehicleId }) {
     const y = lerp(squadStart[1], squadEnd[1], t) + offset[1];
     const dir = dirBetween([x, y], [x + 1, y + 1]);
     const inVehicle = inVehicleUntilFrame && f < inVehicleUntilFrame ? vehicleId : 0;
-    positions.push([[x, y, 0], Math.round(dir), 1, inVehicle, `Unit${offset[0]}`, isPlayer ? 1 : 0, 0, "Alpha", "WEST"]);
+    positions.push([[x, y, unitZ(x, y)], Math.round(dir), 1, inVehicle, `Unit${offset[0]}`, isPlayer ? 1 : 0, 0, "Alpha", "WEST"]);
   }
   return positions;
 }
@@ -135,7 +171,7 @@ const truckId = 100;
     const x = lerp(squadStart[0] - 5, squadEnd[0] - 5, t);
     const y = lerp(squadStart[1] - 5, squadEnd[1] - 5, t);
     const dir = Math.round(dirBetween([x, y], [x + 1, y + 1]));
-    positions.push([[x, y, 0], dir, 1, [2, 3]]);
+    positions.push([[x, y, unitZ(x, y)], dir, 1, [2, 3]]);
   }
   entities.push({
     id: truckId,
@@ -211,7 +247,7 @@ entities.push({
   startFrameNum: 0,
   positions: Array.from({ length: FRAMES }, (_, f) => {
     const alive = f >= opforKilledFrame ? 0 : 1;
-    return [[opforPos[0], opforPos[1], 0], 90, alive, 0, "Ivanov", 0, 0, "Bravo", "EAST"];
+    return [[opforPos[0], opforPos[1], unitZ(opforPos[0], opforPos[1])], 90, alive, 0, "Ivanov", 0, 0, "Bravo", "EAST"];
   }),
 });
 entities.push({
@@ -223,7 +259,7 @@ entities.push({
   isPlayer: 0,
   startFrameNum: 0,
   positions: Array.from({ length: FRAMES }, (_, f) => [
-    [opforPos[0] + 15, opforPos[1] + 10, 0],
+    [opforPos[0] + 15, opforPos[1] + 10, unitZ(opforPos[0] + 15, opforPos[1] + 10)],
     90,
     1,
     0,
