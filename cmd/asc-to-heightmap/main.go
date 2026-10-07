@@ -1,7 +1,7 @@
 // Command asc-to-heightmap turns a world's DEM (ESRI ASCII grid, as written
 // by ocap-exporter for ocap-renderterrain, or dem.asc.gz from grad_meh) into
-// the tiles/heightmap.pmtiles the 3D view uses, through the same heightmap
-// stage as the full map pipeline. Use it for worlds rendered with
+// the tiles/heightmap.pmtiles the 3D view uses (see internal/terrainrgb for
+// why this does not reuse maptool's heightmap stage). Use it for worlds rendered with
 // ocap-renderterrain, which consumes the .asc but never writes a heightmap.
 //
 // Usage:
@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/OCAP2/web/internal/maptool"
+	"github.com/OCAP2/web/internal/terrainrgb"
 )
 
 func main() {
@@ -74,22 +75,12 @@ func main() {
 	}
 	defer os.RemoveAll(tempDir)
 
-	job := &maptool.Job{
-		WorldName: *world,
-		OutputDir: worldDir,
-		TempDir:   tempDir,
-		SubDirs:   true,
-		WorldSize: int(math.Round(float64(grid.Cols) * grid.CellSize)),
-		DEMPath:   path, // NewGenerateHeightmapStage only checks this is non-empty
-		DEMGrid:   grid,
-	}
-	if err := os.MkdirAll(job.TilesOutputDir(), 0o755); err != nil {
-		log.Fatalf("mkdir: %v", err)
-	}
-	if err := maptool.NewGenerateHeightmapStage(tools).Run(context.Background(), job); err != nil {
+	out := filepath.Join(worldDir, "tiles", "heightmap.pmtiles")
+	worldSize := int(math.Round(float64(grid.Cols) * grid.CellSize))
+	if err := terrainrgb.WritePMTiles(context.Background(), tools, grid, worldSize, tempDir, out); err != nil {
 		log.Fatalf("generate heightmap: %v", err)
 	}
-	fmt.Println("Wrote", filepath.Join(job.TilesOutputDir(), "heightmap.pmtiles"))
+	fmt.Println("Wrote", out)
 }
 
 func findASC(worldDir, world string) string {
