@@ -31,6 +31,7 @@ import (
 	"sort"
 
 	"github.com/OCAP2/web/internal/maptool"
+	"github.com/OCAP2/web/internal/terrainrgb"
 )
 
 // rampStop mirrors colorReliefGuide in internal/maptool/colorrelief.go.
@@ -183,28 +184,18 @@ func main() {
 	minE, maxE := minMax(grid)
 	log.Printf("estimated elevation %.0f..%.0f m, %.1f%% of cells read directly from colour", minE, maxE, 100*valid)
 
-	job := &maptool.Job{
-		WorldName: *world,
-		OutputDir: worldDir,
-		TempDir:   tempDir,
-		SubDirs:   true,
-		WorldSize: worldSize,
-		DEMPath:   reliefPath, // NewGenerateHeightmapStage only checks this is non-empty
-		DEMGrid: &maptool.DEMGrid{
-			Cols:     *res,
-			Rows:     *res,
-			CellSize: float64(worldSize) / float64(*res),
-			NoData:   -9999,
-			Data:     data,
-		},
+	out := filepath.Join(worldDir, "tiles", "heightmap.pmtiles")
+	dem := &maptool.DEMGrid{
+		Cols:     *res,
+		Rows:     *res,
+		CellSize: float64(worldSize) / float64(*res),
+		NoData:   -9999,
+		Data:     data,
 	}
-	if err := os.MkdirAll(job.TilesOutputDir(), 0o755); err != nil {
-		log.Fatalf("mkdir: %v", err)
-	}
-	if err := maptool.NewGenerateHeightmapStage(tools).Run(context.Background(), job); err != nil {
+	if err := terrainrgb.WritePMTiles(context.Background(), tools, dem, worldSize, tempDir, out); err != nil {
 		log.Fatalf("generate heightmap: %v", err)
 	}
-	fmt.Println("Wrote", filepath.Join(job.TilesOutputDir(), "heightmap.pmtiles"))
+	fmt.Println("Wrote", out)
 }
 
 // writePGM writes the grid (row 0 = north) as an 8-bit greyscale image,
