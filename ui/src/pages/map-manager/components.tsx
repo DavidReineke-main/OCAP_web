@@ -155,7 +155,10 @@ export function StatusStrip(props: {
                   {PIPELINE_STAGES[currentIdx()]?.short || job().stage}
                 </span>
                 <span class={styles.activeElapsed}>
-                  {(void tick(), elapsed(job().startedAt))}
+                  {(() => {
+                    tick();
+                    return elapsed(job().startedAt);
+                  })()}
                 </span>
 
                 <button
