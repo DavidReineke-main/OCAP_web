@@ -15,6 +15,7 @@ import { SkullIcon, BulletIcon, LinkIcon, ClockIcon, DoorExitIcon, ActivityIcon,
 import { EventFilters, DEFAULT_EVENT_FILTERS } from "./EventFilters";
 import type { EventFilterState } from "./EventFilters";
 import styles from "./SidePanel.module.css";
+import { logiEventStyle } from "../../../extensions/ctabLogi"; // fork: ctab-logi
 
 function sideColor(side?: string): string {
   switch (side) {
@@ -27,6 +28,8 @@ function sideColor(side?: string): string {
 }
 
 function eventStyle(event: GameEvent): { icon: JSX.Element; color: string } {
+  const logiStyle = logiEventStyle(event); // fork: ctab-logi
+  if (logiStyle) return logiStyle;
   if (event instanceof HitKilledEvent) {
     return event.type === "killed"
       ? { icon: <SkullIcon size={16} />, color: "var(--accent-danger)" }

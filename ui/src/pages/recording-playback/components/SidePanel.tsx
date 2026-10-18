@@ -5,6 +5,7 @@ import { useI18n } from "../../../hooks/useLocale";
 import { UnitsTab } from "./UnitsTab";
 import { EventsTab } from "./EventsTab";
 import { StatsTab } from "./StatsTab";
+import { LogiTab, logiTab } from "../../../extensions/ctabLogi"; // fork: ctab-logi
 import styles from "./SidePanel.module.css";
 
 export interface SidePanelProps {
@@ -23,6 +24,7 @@ export function SidePanel(props: SidePanelProps): JSX.Element {
     { id: "units" as const, labelKey: "units", Icon: UsersIcon },
     { id: "events" as const, labelKey: "events", Icon: ActivityIcon },
     { id: "stats" as const, labelKey: "stats", Icon: BarChartIcon },
+    logiTab, // fork: ctab-logi
   ];
 
   return (
@@ -56,6 +58,9 @@ export function SidePanel(props: SidePanelProps): JSX.Element {
         </Match>
         <Match when={props.activeTab() === "stats"}>
           <StatsTab />
+        </Match>
+        <Match when={props.activeTab() === logiTab.id}>{/* fork: ctab-logi */}
+          <LogiTab />
         </Match>
       </Switch>
 

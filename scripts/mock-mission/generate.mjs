@@ -277,7 +277,43 @@ const events = [
   [0, "connected", "Reineke"],
   [opforKilledFrame - 2, "hit", ivanovId, [0, "arifle_MX_F"], 42.3],
   [opforKilledFrame, "killed", ivanovId, [0, "arifle_MX_F"], 44.1],
+  ...logiEvents(),
 ];
+
+// ---------------- cTab LOGI requests (ui/src/extensions/ctabLogi) ----------------
+
+/**
+ * Two LOGI orders: "AMMO" with full JSON data (as a recorder that keeps
+ * extraData would write it) and "MED" with only cTab's text (what today's
+ * OCAP2 extension writes).
+ */
+function logiEvents() {
+  const reineke = { uid: "76561198000000001", name: "Reineke", callsign: "Alpha" };
+  const cooper = { uid: "76561198000000002", name: "Cooper", callsign: "Alpha" };
+  const ammo = {
+    schema: 1, requestId: "76561198000000001-1", requestName: "AMMO",
+    sender: reineke, recipients: [cooper],
+  };
+  const status = (frame, oldStatus, newStatus) => [frame, "cTab_logiStatusChanged",
+    { ...ammo, missionTime: frame, gameTime: "14:0" + Math.floor(frame / 60), oldStatus, newStatus, changedBy: cooper }];
+  return [
+    [20, "cTab_logiRequestSent", {
+      ...ammo, missionTime: 20, gameTime: "14:00", forwarded: false, status: "REQUESTED",
+      itemCount: 3, itemsTruncated: false,
+      items: [
+        { class: "30Rnd_65x39_caseless_mag", name: "6.5 mm 30Rnd STANAG Mag", qty: 20, type: "ITEM" },
+        { class: "Box_NATO_Ammo_F", name: "Basic Ammo [NATO]", qty: 2, type: "CRATE" },
+        { class: "B_Truck_01_ammo_F|FAC", name: "HEMTT Ammo + FAC", qty: 1, type: "VEHICLE",
+          vehicleClass: "B_Truck_01_ammo_F", preset: "FAC" },
+      ],
+    }],
+    status(45, "REQUESTED", "IN PROCESS"),
+    status(80, "IN PROCESS", "IN DELIVERY"),
+    status(150, "IN DELIVERY", "DELIVERED"),
+    [60, "cTab_logiRequestSent", 'LOGI: Alpha (Diaz) sent request "MED" to Alpha (1 entry)'],
+    [110, "cTab_logiStatusChanged", 'LOGI: Alpha (Novak) set request "MED" from Alpha to ABORTED'],
+  ];
+}
 
 const mission = {
   worldName,

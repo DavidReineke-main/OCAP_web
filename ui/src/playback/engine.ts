@@ -15,6 +15,7 @@ import { EndMissionEvent } from "./events/endMissionEvent";
 import { GeneralMissionEvent } from "./events/generalEvent";
 import { CapturedEvent } from "./events/capturedEvent";
 import { TerminalHackEvent } from "./events/terminalHackEvent";
+import { createLogiGameEvent } from "../extensions/ctabLogi/logiEvent"; // fork: ctab-logi
 import { Unit } from "./entities/unit";
 import { Vehicle } from "./entities/vehicle";
 
@@ -56,7 +57,7 @@ function createGameEvent(def: EventDef): GameEvent | null {
       // Counter events are handled separately via CounterState
       return null;
     default:
-      return null;
+      return createLogiGameEvent(def, id); // fork: ctab-logi
   }
 }
 

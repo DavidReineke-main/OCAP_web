@@ -11,6 +11,7 @@ import type {
   Side,
 } from "../types";
 import type { DecoderStrategy } from "./decoder.interface";
+import { convertLogiEvent } from "../../extensions/ctabLogi/parse"; // fork: ctab-logi
 
 // ───────── Legacy JSON shape ─────────
 
@@ -306,7 +307,7 @@ function convertEvent(raw: RawJsonEvent): EventDef | null {
     }
     default:
       // Unknown event types: skip
-      return null;
+      return convertLogiEvent(raw); // fork: ctab-logi
   }
 }
 
